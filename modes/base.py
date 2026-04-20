@@ -20,3 +20,9 @@ class Mode:
     def teardown(self, arm):
         """Called once after the loop exits. Release any mode-owned resources."""
         return None
+
+    def get_state(self):
+        """Short label for this mode's current state. Published as top-level
+        `state` in /IOTCONNECT telemetry. Override in stateful modes; static
+        modes can return a fixed label (e.g. 'ASL-Gesture')."""
+        return self.name

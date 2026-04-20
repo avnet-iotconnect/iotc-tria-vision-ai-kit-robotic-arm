@@ -226,16 +226,23 @@ All knobs live at the top of [modes/ball_follow.py](modes/ball_follow.py). The m
 
 > **Warning:** `PAN_GAIN`, `TILT_GAIN`, `APPROACH_STEP`, and `MAX_STEP` all scale implicitly with the camera/loop frame rate — if you change camera resolution, drop the preview, or otherwise change fps, expect to re-tune them.
 
-### /IOTCONNECT Telemetry (ball mode)
+### /IOTCONNECT Telemetry
 
-While `ball` mode is running, every system-telemetry payload is augmented with a `ballTrack` block:
+Every telemetry payload carries a top-level **`state`** field identifying the active mode:
 
-- `state` — current state machine value (`SCANNING`, `TRACKING`, `GRABBING`, `HOLDING`, …)
-- `bx`, `by`, `br` — last detected ball pixel position and radius (or `null` if not seen)
-- `pan_err`, `tilt_err` — current pixel error from the aim point
-- `centered_ok`, `radius_ok` — boolean gates the controller is currently waiting on
+- Ball mode publishes its state-machine value — `IDLE`, `SCANNING`, `TRACKING`, `PREDICTING`, `GRABBING`, or `HOLDING`.
+- ASL mode publishes the fixed label `ASL-Gesture` so the dashboard can tell which demo is running even when no gesture is currently being acted on.
 
-This is published on the standard telemetry cadence so you can watch the controller converge from the /IOTCONNECT dashboard.
+Ball mode additionally augments each payload with a `ballTrack` block:
+
+- `state` — same state-machine value as the top-level field (also mirrored here for convenience).
+- `ball_x`, `ball_y`, `ball_r` — last detected ball pixel position and radius (or `0` if not seen).
+- `pan_err`, `tilt_err`, `radius_err` — current pixel/radius error from the aim point.
+- `velocity_x`, `velocity_y` — recent ball motion in px/frame.
+- `d_pan`, `d_tilt`, `d_lift`, `d_elbow` — last commanded servo deltas.
+- `no_ball_frames`, `pred_frames_left`, `is_prediction` — detection-loss / extrapolation bookkeeping.
+
+Publishing cadence is ~2 s (see `TELEMETRY_INTERVAL_S` in [modes/ball_follow.py](modes/ball_follow.py) and [modes/asl.py](modes/asl.py)). If `state` or `ballTrack.*` doesn't appear on your /IOTCONNECT dashboard, verify the fields are declared on the device's template — the broker drops undeclared attributes silently.
 
 ## Troubleshooting
 

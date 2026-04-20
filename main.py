@@ -283,6 +283,10 @@ def _send_iotconnect_telemetry(payload: dict):
 # safe) and hand the rest off to a worker thread.
 _telemetry_queue = queue.Queue(maxsize=1)
 _telemetry_worker_started = False
+# Tracks the currently running mode so send_telemetry can stamp every
+# payload with a top-level `state` (e.g. SCANNING/TRACKING/GRABBING/HOLDING
+# for ball mode, "ASL-Gesture" for ASL). Set by run_mode.
+_current_mode = None
 
 
 def _telemetry_worker_loop():
@@ -340,6 +344,17 @@ def send_telemetry(arm, extras=None, positions=None):
             'shoulder_lift': arm.getPosition(5),
             'shoulder_pan': arm.getPosition(6),
         }
+    # Stamp every payload with top-level `state` from the active mode.
+    if _current_mode is not None:
+        try:
+            mode_state = _current_mode.get_state()
+        except Exception as e:
+            print(f"[telemetry] get_state failed: {e}")
+            mode_state = None
+        if mode_state is not None:
+            extras = dict(extras) if extras else {}
+            extras.setdefault("state", mode_state)
+
     item = (arm_positions, extras)
     try:
         _telemetry_queue.put_nowait(item)
@@ -446,12 +461,14 @@ def run_mode(arm, mode, camera_index=2, frame_w=640, frame_h=480,
              window_title="IOTCONNECT XArm Control", headless=False, perf_every=30):
     """Generic camera loop. Each frame: capture -> mode.process_frame -> display -> IoTConnect cmd pump.
     Exits on ESC or 'q' (or Ctrl-C in headless)."""
+    global _current_mode
     cam = _FreshCamera(camera_index, frame_w, frame_h)
     if not cam.start():
         print("[ERROR] Camera failed to open!")
         return
     print(f"[INFO] Camera input: {camera_index} ({frame_w}, {frame_h}) — mode={mode.name} headless={headless}")
 
+    _current_mode = mode
     mode.setup(arm)
 
     # rolling perf counters
@@ -509,6 +526,7 @@ def run_mode(arm, mode, camera_index=2, frame_w=640, frame_h=480,
         cam.release()
         if not headless:
             cv2.destroyAllWindows()
+        _current_mode = None
 
 
 def parse_args():

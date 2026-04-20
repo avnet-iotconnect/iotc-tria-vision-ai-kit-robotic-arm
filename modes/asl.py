@@ -6,6 +6,7 @@ action fires per distinct gesture (cooldown until the recognized sign changes).
 """
 
 import os
+import time
 
 import cv2
 import mediapipe as mp
@@ -13,6 +14,8 @@ import numpy as np
 import torch
 
 from .base import Mode
+
+TELEMETRY_INTERVAL_S = 2.0
 
 try:
     from point_net import PointNet
@@ -52,6 +55,10 @@ class ASLMode(Mode):
         self.hands = None
         self.last_gesture = None
         self.gesture_cooldown = 0
+        self.last_telemetry_at = 0.0
+
+    def get_state(self):
+        return "ASL-Gesture"
 
     def setup(self, arm):
         if PointNet is None:
@@ -136,6 +143,14 @@ class ASLMode(Mode):
                 self.gesture_cooldown = 1
                 self._dispatch(arm, current_gesture[0], current_gesture[1],
                                execute_arm_action, send_telemetry, ACTION_LABELS)
+
+        now = time.time()
+        if now - self.last_telemetry_at >= TELEMETRY_INTERVAL_S:
+            self.last_telemetry_at = now
+            try:
+                send_telemetry(arm)
+            except Exception as e:
+                print(f"[asl] telemetry failed: {e}")
 
         return annotated
 

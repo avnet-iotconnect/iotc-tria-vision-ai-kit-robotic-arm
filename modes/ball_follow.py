@@ -538,6 +538,9 @@ class BallFollowMode(Mode):
         except Exception as e:
             print(f"[ball] telemetry failed: {e}")
 
+    def get_state(self):
+        return self.state
+
     def telemetry(self):
         """Build a flat dict of mode state for IoTConnect telemetry."""
         bx, by, br = self.last_ball
