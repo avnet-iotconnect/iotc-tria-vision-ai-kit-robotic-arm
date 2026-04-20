@@ -3,18 +3,18 @@
 This project showcases the **TRIA Vision AI Kit 6490** running **/IOTCONNECT** integration with the Hiwonder XArm 1S robotic arm. It ships two interchangeable vision modes selectable at launch with `--mode`:
 
 - **`asl`** (default) — American Sign Language gesture control. Operator drives the arm by signing letters in front of a webcam.
-- **`ball`** — Autonomous eye-in-hand visual servoing. The wrist-mounted camera detects a coloured ball, and the arm pans/tilts/advances on its own to centre, approach, and grab it.
+- **`ball`** — Autonomous eye-in-hand visual servoing. The wrist-mounted camera detects a colored ball, and the arm pans/tilts/advances on its own to center, approach, and grab it.
 
 Both modes run on the TRIA board, stream live telemetry to /IOTCONNECT, and accept remote commands from the cloud.
 
 ## Key Features
 
 - **TRIA Vision AI Kit 6490**: Qualcomm QCS6490-powered edge AI platform for real-time gesture recognition
-- **IoTConnect Cloud Integration**: Real-time telemetry transmission and remote command execution
+- **/IOTCONNECT Cloud Integration**: Real-time telemetry transmission and remote command execution
 - **ASL Gesture Control**: AI-powered American Sign Language recognition using MediaPipe + PointNet
-- **Autonomous Ball Pick-Up**: Eye-in-hand HSV detection + proportional visual-servo controller that scans, tracks, approaches, and grabs a coloured ball with no operator input
+- **Autonomous Ball Pick-Up**: Eye-in-hand HSV detection + proportional visual-servo controller that scans, tracks, approaches, and grabs a colored ball with no operator input
 - **Robotic Arm Control**: Hiwonder XArm 1S with 6-DOF movement and gripper control
-- **Edge-to-Cloud Architecture**: Local AI inference on TRIA board with cloud connectivity via IoTConnect
+- **Edge-to-Cloud Architecture**: Local AI inference on TRIA board with cloud connectivity via /IOTCONNECT
 
 ## Setup
 
@@ -23,18 +23,18 @@ This project is designed to run on the **TRIA Vision AI Kit 6490** with **/IOTCO
 ### Why TRIA Vision AI Kit 6490 + /IOTCONNECT?
 
 - **TRIA Vision AI Kit 6490**: Energy-efficient Qualcomm QCS6490 SOC with multi-camera support, perfect for real-time AI inference
-- **IoTConnect Integration**: Seamless cloud connectivity for telemetry, remote monitoring, and command execution
+- **/IOTCONNECT Integration**: Seamless cloud connectivity for telemetry, remote monitoring, and command execution
 - **Edge AI**: Run neural network inference locally on TRIA board while streaming results to the cloud
 - **Industrial IoT**: Enterprise-grade IoT platform for robotics and automation applications
 
 ### Hardware Requirements
 
 - **[TRIA Vision AI-KIT 6490](https://www.newark.com/avnet/sm2-sk-qcs6490-ep6-kit001/dev-kit-64bit-arm-cortex-a55-a78/dp/51AM9843)** - Main compute platform with Qualcomm QCS6490 SOC
-- **[HiWonder xArm1S](https://www.amazon.com/LewanSoul-Programmable-Feedback-Parameter-Programming/dp/B0CHY63V9P?th=1)** - Robotic Arm connected vis USB
+- **[HiWonder xArm1S](https://www.amazon.com/LewanSoul-Programmable-Feedback-Parameter-Programming/dp/B0CHY63V9P?th=1)** - Robotic Arm connected via USB
 - USB-C Cable for flashing and USB-ADB debug (included with kit)
 - USB-C 12VDC Power Supply and Cable (included with kit)
 - Ethernet Cable (not included)
-- Logitech Webcam or camera device for hand tracking
+- USB camera for hand tracking (ASL mode) and eye-in-hand visual servoing (ball mode). For the ball mode the camera is mounted on the **wrist roll** servo with zip ties so it pitches with the gripper. The build pictured here uses a USB camera module pulled out of a Logitech webcam shell to keep the wrist payload small. **Recommended:** a bare USB-camera PCB module mounted directly behind the gripper jaws — that gives the cleanest line of sight to whatever the gripper is about to grab and removes the parallax that makes the camera-gripper offset calibration necessary.
 - HDMI Monitor with Active
 - USB Mouse and Keyboard
 
@@ -122,19 +122,21 @@ The system supports real-time command execution through /IOTCONNECT:
 
 ## Ball-Follow Mode (Autonomous Visual Servoing)
 
-The `ball` mode turns the XArm into an autonomous pick-and-place demo. The wrist-mounted camera looks for a single coloured ball, the controller centres it in the frame, advances until the ball fills the expected radius, then closes the gripper, lifts, and returns to home. No operator input is required after launch.
+The `ball` mode turns the XArm into an autonomous pick-and-place demo. The wrist-mounted camera looks for a single colored ball, the controller centers it in the frame, advances until the ball fills the expected radius, then closes the gripper, lifts, and returns to home. No operator input is required after launch.
+
+**Recommended target object:** Nerf Rival Ammo Balls. Their small diameter lets the wrist camera capture the entire ball within the frame even at close approach distance (so the radius-based "close enough" gate stays reliable), and the soft foam compresses slightly inside the gripper jaws — giving a tolerant grab that doesn't require sub-millimeter centering.
 
 ### How It Works
 
-The controller aims for the **geometric centre** of the camera frame and trusts the gripper to be close enough to that aim point. (An optional camera-gripper offset exists in [modes/ball_follow.py](modes/ball_follow.py) — `CAM_GRIPPER_OFFSET_X / _Y` — for hardware where the wrist camera is mounted noticeably off-axis from the gripper fingers. Both default to `0` for the current build; only set them if you observe the gripper consistently closing next to the ball rather than on it.)
+The controller aims for the **geometric center** of the camera frame and trusts the gripper to be close enough to that aim point. (An optional camera-gripper offset exists in [modes/ball_follow.py](modes/ball_follow.py) — `CAM_GRIPPER_OFFSET_X / _Y` — for hardware where the wrist camera is mounted noticeably off-axis from the gripper fingers. Both default to `0` for the current build; only set them if you observe the gripper consistently closing next to the ball rather than on it.)
 
 The mode runs as a state machine driven by per-frame HSV detection:
 
 | State        | What it does                                                                                       | Exit                                                              |
 |--------------|----------------------------------------------------------------------------------------------------|-------------------------------------------------------------------|
 | `IDLE`       | Initial state at launch. Falls through immediately.                                                | → `SCANNING`                                                      |
-| `SCANNING`   | Cycles through `SCAN_POSES` (centre / left / right) so the camera sweeps the workspace.            | Ball detected → `TRACKING`                                        |
-| `TRACKING`   | P-controller drives `shoulder_pan` + `wrist_flex` (with elbow assist) to centre the ball pixel.    | Ball centred AND radius below target → advance; centred + radius OK → `GRABBING` |
+| `SCANNING`   | Cycles through `SCAN_POSES` (center / left / right) so the camera sweeps the workspace.            | Ball detected → `TRACKING`                                        |
+| `TRACKING`   | P-controller drives `shoulder_pan` + `wrist_flex` (with elbow assist) to center the ball pixel.    | Ball centerd AND radius below target → advance; centerd + radius OK → `GRABBING` |
 | `GRABBING`   | Closes the gripper, watches the actual position to detect a stall against the ball, then lifts.    | → `HOLDING`                                                       |
 | `HOLDING`    | Returns to home (keeping the gripper closed) and waits for the operator to manually open it.       | Gripper opened by user → `IDLE`                                   |
 
@@ -146,7 +148,7 @@ The ball mode needs two required pieces of calibration data, plus an optional th
 
 Both calibration scripts release **all six servo torques** so you can free-pose the entire arm — useful for aiming the wrist camera before sampling. **Always physically support the arm before pressing Enter**; on a wall- or ceiling-mounted arm the whole assembly will swing under gravity the instant torque drops.
 
-#### 1. Ball colour — [ball_calibrate.py](ball_calibrate.py)
+#### 1. Ball color — [ball_calibrate.py](ball_calibrate.py)
 
 Captures the HSV thresholds used for ball segmentation.
 
@@ -171,14 +173,14 @@ Captures the arm poses cycled through during `SCANNING`. Torque is dropped so yo
 Workflow:
 1. **Support the arm with your hand** — torque is about to drop and a wall/ceiling-mounted arm will swing under gravity.
 2. Press Enter to release torque.
-3. Pose the camera at one of the scan positions (centre, left edge, right edge).
+3. Pose the camera at one of the scan positions (center, left edge, right edge).
 4. Press `s` + Enter to snapshot. The script prints a `SCAN_POSE = [...]` block ready to paste into [modes/ball_follow.py](modes/ball_follow.py).
 5. Press `h` + Enter to re-enable torque before letting go of the arm.
 6. Repeat for each pose, then `q` + Enter to quit.
 
 #### 3. Camera-gripper offset (OPTIONAL) — [calibrate_cam_offset.py](calibrate_cam_offset.py)
 
-Skip this step unless you observe the gripper consistently closing next to the ball rather than on it. The default build aims at the geometric image centre (`CAM_GRIPPER_OFFSET_X = CAM_GRIPPER_OFFSET_Y = 0`) and that is correct for the current camera mount. Only run this if you change the camera mount, swap the gripper, or notice a systematic miss.
+Skip this step unless you observe the gripper consistently closing next to the ball rather than on it. The default build aims at the geometric image center (`CAM_GRIPPER_OFFSET_X = CAM_GRIPPER_OFFSET_Y = 0`) and that is correct for the current camera mount. Only run this if you change the camera mount, swap the gripper, or notice a systematic miss.
 
 ```bash
 ./calibrate_offset.sh         # or: python calibrate_cam_offset.py
@@ -215,16 +217,16 @@ All knobs live at the top of [modes/ball_follow.py](modes/ball_follow.py). The m
 | `MAX_STEP`                                     | Hard cap on any single-frame servo delta — keeps a large pixel error from snapping the arm. |
 | `MOVE_DURATION_MS`                             | How long each per-frame move takes. Too short and small commands get ignored; too long and the loop rate drops. |
 | `CENTER_DEADBAND_PX`                           | Pixel error inside which the controller stops trimming. Must be ≥ `MIN_TRIM_STEP_PAN × pixels-per-servo-unit` (~7 px/unit) or a single floored pan command will fling the ball clear past the deadband and the controller will oscillate. |
-| `APPROACH_DEADBAND_PX`                         | Looser threshold — once inside this, the arm is allowed to descend toward the ball even while still fine-centring. |
+| `APPROACH_DEADBAND_PX`                         | Looser threshold — once inside this, the arm is allowed to descend toward the ball even while still fine-centering. |
 | `TARGET_RADIUS_PX`, `RADIUS_TOLERANCE`         | Apparent ball radius (in pixels) that means "close enough to grab". Tune for your ball + grab height. |
-| `CAM_GRIPPER_OFFSET_X / _Y`                    | Optional aim-point shift in pixels from the geometric image centre, measured by [calibrate_cam_offset.py](calibrate_cam_offset.py). Default `0`/`0` — leave at zero unless you observe a systematic miss. |
+| `CAM_GRIPPER_OFFSET_X / _Y`                    | Optional aim-point shift in pixels from the geometric image center, measured by [calibrate_cam_offset.py](calibrate_cam_offset.py). Default `0`/`0` — leave at zero unless you observe a systematic miss. |
 | `LIFT_MAX`, `ELBOW_MAX`                        | Hard safety ceilings during approach so a never-satisfied radius check can't drive the gripper into the table. |
 | `NO_BALL_GRACE_FRAMES`                         | How many consecutive lost-ball frames before falling back to `SCANNING`. Increase if the ball flickers in and out at the frame edge. |
 | `SCAN_POSES`                                   | The poses cycled through while searching. Captured with [teach_pose.py](teach_pose.py). |
 
 > **Warning:** `PAN_GAIN`, `TILT_GAIN`, `APPROACH_STEP`, and `MAX_STEP` all scale implicitly with the camera/loop frame rate — if you change camera resolution, drop the preview, or otherwise change fps, expect to re-tune them.
 
-### IoTConnect Telemetry (ball mode)
+### /IOTCONNECT Telemetry (ball mode)
 
 While `ball` mode is running, every system-telemetry payload is augmented with a `ballTrack` block:
 
@@ -241,14 +243,14 @@ This is published on the standard telemetry cadence so you can watch the control
 - **HIDAPI Issues**: The xarm library uses hidapi for USB communication - ensure proper USB device permissions
 - **Camera Not Detected**: Verify camera is connected to TRIA board and accessible
 - **Model Loading Errors**: Ensure model files are downloaded and accessible in the `model/` directory
-- **IoTConnect Connection**: Check ethernet connectivity and device onboarding status
+- **/IOTCONNECT Connection**: Check ethernet connectivity and device onboarding status
 - **Permission Issues**: Run applications with appropriate permissions for USB/serial access
 
 ### Ball-Follow Mode
 
-- **Gripper closes on empty space next to the ball**: the camera is far enough off-axis from the gripper that aiming at the geometric image centre is no longer good enough. Run [calibrate_cam_offset.py](calibrate_cam_offset.py) and paste the resulting `CAM_GRIPPER_OFFSET_X / _Y` into [modes/ball_follow.py](modes/ball_follow.py). Re-run after any change to the camera mount, gripper, or wrist plate.
+- **Gripper closes on empty space next to the ball**: the camera is far enough off-axis from the gripper that aiming at the geometric image center is no longer good enough. Run [calibrate_cam_offset.py](calibrate_cam_offset.py) and paste the resulting `CAM_GRIPPER_OFFSET_X / _Y` into [modes/ball_follow.py](modes/ball_follow.py). Re-run after any change to the camera mount, gripper, or wrist plate.
 - **Arm finds the ball but "just sits there" shaking slightly**: classic bus-servo static-friction stall. The P-controller is commanding a delta below ~5 servo units that the motor physically ignores. Make sure `MIN_TRIM_STEP` is at least `8` and `MIN_TRIM_STEP_PAN` is at least `18` in [modes/ball_follow.py](modes/ball_follow.py), and don't try to fix this by lowering `CENTER_DEADBAND_PX` — that just moves the dead-spot inward.
-- **Arm centres the ball but never descends toward it**: same friction-floor failure on the lift axis. Raise `APPROACH_STEP` (default 15) — at extended poses (`shoulder_lift` > 600) the lift servo needs ≥12-unit commands to actually move, even though shorter commands get accepted by the bus.
+- **Arm centers the ball but never descends toward it**: same friction-floor failure on the lift axis. Raise `APPROACH_STEP` (default 15) — at extended poses (`shoulder_lift` > 600) the lift servo needs ≥12-unit commands to actually move, even though shorter commands get accepted by the bus.
 - **Arm bounces between tracking and scan-move every time the ball flickers**: the detector is losing the ball briefly (clipping at frame edges, HSV margin too tight). Raise `NO_BALL_GRACE_FRAMES` so the controller holds pose through short detection drop-outs, or re-run [ball_calibrate.py](ball_calibrate.py) under the actual lighting.
 - **Arm drives _away_ from the ball instead of toward it**: a sign is wrong. Flip `PAN_DIR`, `TILT_DIR`, or `TILT_ELBOW_DIR` in [modes/ball_follow.py](modes/ball_follow.py) (whichever axis is wrong). These are mount-dependent — re-mounting the arm on a different bracket can flip them.
 - **Arm reaches the right pose but the gripper closes before reaching the ball**: `TARGET_RADIUS_PX` is too low for your ball / grab distance. Watch the live OSD's reported radius at the moment you'd want it to fire and set `TARGET_RADIUS_PX` to that value.
@@ -296,7 +298,7 @@ ls /dev/video*  # Should show available camera devices
 - [TRIA Startup Guide](https://avnet.com/wcm/connect/137a97f1-eb6e-48ba-89a4-40b024558593/Vision+AI-KIT+6490+Startup+Guide+v1.3.pdf?MOD=AJPERES&attachment=true&id=1761931434976) - Hardware setup and cable connections
 
 ### /IOTCONNECT Platform
-- [/IOTCONNECT SDK](https://github.com/avnet-iotconnect/avnet-iotconnect-python-sdk) - IoTConnect Python SDK for cloud connectivity
+- [/IOTCONNECT SDK](https://github.com/avnet-iotconnect/avnet-iotconnect-python-sdk) - /IOTCONNECT Python SDK for cloud connectivity
 - [/IOTCONNECT Device Onboarding](https://github.com/avnet-iotconnect/iotc-python-lite-sdk-demos/blob/main/common/general-guides/UI-ONBOARD.md) - Step-by-step device registration guide
 - [/IOTCONNECT Overview](https://www.iotconnect.io/) - Enterprise IoT platform information
 
