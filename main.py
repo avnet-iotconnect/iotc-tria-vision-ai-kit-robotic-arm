@@ -1,26 +1,29 @@
 #!/usr/bin/env python3
 """
-IOTCONNECT XArm Gesture Control
-Demonstrates IOTCONNECT integration with ASL gesture-controlled XArm 1S robot.
-Features real-time telemetry transmission and remote command execution.
+IOTCONNECT XArm Vision Control
+
+Outer loop owns: camera, display window, IoTConnect command pump, arm bring-up.
+Per-frame inference + arm decisions live in modes/<name>.py and are selected
+with --mode. Default mode is 'asl' (the original gesture-controlled demo).
 """
 
+import argparse
 import json
 import os
+import queue
 import threading
 import time
+from collections import deque
+from dataclasses import asdict
+from datetime import datetime
+
 import cv2
-import mediapipe as mp
-import numpy as np
+
 import systemdata
-import torch
 import xarm
 
-from collections import deque
-from datetime import datetime
-from dataclasses import asdict
+from modes import make_mode
 
-# IOTCONNECT SDK imports
 try:
     from avnet.iotconnect.sdk.lite import Client, DeviceConfig, Callbacks, DeviceConfigError
     from avnet.iotconnect.sdk.sdklib.mqtt import C2dCommand, C2dAck
@@ -34,26 +37,6 @@ except ImportError:
     C2dCommand = None
     C2dAck = None
 
-try:
-    from point_net import PointNet
-except ImportError:
-    print("Warning: point_net module not found. Please ensure model/point_net.py exists and that the project root is on PYTHONPATH.")
-    PointNet = None
-
-# MediaPipe setup
-mp_hands = mp.solutions.hands
-hands = mp_hands.Hands(min_detection_confidence=0.5, min_tracking_confidence=0.5)
-mp_drawing = mp.solutions.drawing_utils
-
-# Device for PyTorch
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
-# ASL character to integer mapping
-char2int = {
-    "A":0, "B":1, "C":2, "D":3, "E":4, "F":5, "G":6, "H":7, "I":8, "K":9, "L":10,
-    "M":11, "N":12, "O":13, "P":14, "Q":15, "R":16, "S":17, "T":18, "U":19,
-    "V":20, "W":21, "X":22, "Y":23
-}
 
 ACTION_LABELS = {
     'advance': "A : Advance",
@@ -66,21 +49,72 @@ ACTION_LABELS = {
     'move_to': "Move To Position",
     'close_gripper': "A : Close Gripper",
     'open_gripper': "B : Open Gripper",
+    'wrist_roll_cw': "Wrist Roll CW",
+    'wrist_roll_ccw': "Wrist Roll CCW",
+    'wrist_flex_up': "Wrist Flex Up",
+    'wrist_flex_down': "Wrist Flex Down",
+    'demo_wave': "Demo: Wave Hello",
+    'demo_bow': "Demo: Bow",
+    'demo_stretch': "Demo: Stretch Up",
+    'demo_scan': "Demo: Scan Sweep",
+    'demo_shake_no': "Demo: Shake No",
+    'demo_pickup': "Demo: Pick & Place",
 }
 
-LEFT_GESTURE_TO_ACTION = {
-    'A': 'advance',
-    'B': 'backup',
-    'L': 'left',
-    'R': 'right',
-    'U': 'up',
-    'Y': 'down',
-    'H': 'home',
-}
+HOME_POSITIONS = [[1, 500], [2, 500], [3, 500], [4, 500], [5, 500], [6, 500]]
 
-RIGHT_GESTURE_TO_ACTION = {
-    'A': 'close_gripper',
-    'B': 'open_gripper',
+# Scripted demo sequences. Each item is (positions, duration_ms).
+# Every sequence must end at HOME_POSITIONS so the next action starts from a known pose.
+DEMO_SEQUENCES = {
+    'demo_wave': [
+        ([[5, 250], [4, 250], [3, 500], [2, 500]], 1500),
+        ([[2, 300]], 350),
+        ([[2, 700]], 350),
+        ([[2, 300]], 350),
+        ([[2, 700]], 350),
+        ([[2, 500]], 350),
+        (HOME_POSITIONS, 1500),
+    ],
+    'demo_bow': [
+        ([[5, 700], [4, 600], [3, 600]], 1500),
+        ([[5, 700]], 800),
+        (HOME_POSITIONS, 1500),
+    ],
+    'demo_stretch': [
+        ([[5, 150], [4, 500], [3, 500], [2, 500]], 1800),
+        ([[3, 350]], 800),
+        ([[3, 650]], 800),
+        ([[3, 500]], 400),
+        (HOME_POSITIONS, 1800),
+    ],
+    'demo_scan': [
+        ([[5, 350], [4, 400], [3, 500]], 1200),
+        ([[6, 100]], 1500),
+        ([[6, 900]], 2500),
+        ([[6, 500]], 1200),
+        (HOME_POSITIONS, 1200),
+    ],
+    'demo_shake_no': [
+        ([[5, 300], [4, 350]], 1200),
+        ([[6, 400]], 250),
+        ([[6, 600]], 250),
+        ([[6, 400]], 250),
+        ([[6, 600]], 250),
+        ([[6, 400]], 250),
+        ([[6, 500]], 250),
+        (HOME_POSITIONS, 1200),
+    ],
+    'demo_pickup': [
+        ([[1, 100]], 600),
+        ([[5, 750], [4, 650], [3, 550], [6, 500]], 1800),
+        ([[1, 650]], 700),
+        ([[5, 300], [4, 400]], 1500),
+        ([[6, 200]], 1500),
+        ([[5, 750], [4, 650]], 1500),
+        ([[1, 100]], 600),
+        ([[5, 300], [4, 400]], 1200),
+        (HOME_POSITIONS, 1500),
+    ],
 }
 
 IOTC_COMMAND_TO_ACTION = {
@@ -94,17 +128,17 @@ IOTC_COMMAND_TO_ACTION = {
     'move_right': 'right',
     'move_up': 'up',
     'move_down': 'down',
+    'wrist_roll_cw': 'wrist_roll_cw',
+    'wrist_roll_ccw': 'wrist_roll_ccw',
+    'wrist_flex_up': 'wrist_flex_up',
+    'wrist_flex_down': 'wrist_flex_down',
+    'demo_wave': 'demo_wave',
+    'demo_bow': 'demo_bow',
+    'demo_stretch': 'demo_stretch',
+    'demo_scan': 'demo_scan',
+    'demo_shake_no': 'demo_shake_no',
+    'demo_pickup': 'demo_pickup',
 }
-
-# Text overlay parameters
-scale = 1.0
-text_fontType = cv2.FONT_HERSHEY_SIMPLEX
-text_fontSize = 0.75 * scale
-text_color = (255, 0, 0)
-text_lineSize = max(1, int(2 * scale))
-text_lineType = cv2.LINE_AA
-text_x = int(10 * scale)
-text_y = int(30 * scale)
 
 
 iotc_command_queue = deque()
@@ -148,7 +182,7 @@ def _init_iotconnect_client():
             device_cert_path=device_cert_path,
             device_pkey_path=device_pkey_path
         )
-       
+
         print('Device Config', config)
         callbacks = Callbacks(command_cb=iotc_on_command, disconnected_cb=iotc_on_disconnect)
         iotc_publisher = Client(config=config, callbacks=callbacks)
@@ -206,7 +240,7 @@ def process_iotconnect_commands(arm):
         try:
             action_name = IOTC_COMMAND_TO_ACTION.get(command_name)
             if action_name is None:
-                ack_status = C2dAck.CMD_FAILURE_WITH_ACK
+                ack_status = C2dAck.CMD_FAILED
                 ack_message = f"Unknown command '{command_name}'"
                 print(ack_message)
             else:
@@ -214,7 +248,7 @@ def process_iotconnect_commands(arm):
                 print(f"Action: {action_detected}")
                 send_telemetry(arm)
         except Exception as e:
-            ack_status = C2dAck.CMD_FAILURE_WITH_ACK
+            ack_status = C2dAck.CMD_FAILED
             ack_message = f"Command failed: {e}"
             print(ack_message)
         try:
@@ -242,20 +276,98 @@ def _send_iotconnect_telemetry(payload: dict):
         print(f'IoTConnect telemetry publish error: {e}')
 
 
-def send_telemetry(arm):
-    telemetry = {
-        'gripper': arm.getPosition(1),
-        'wrist_roll': arm.getPosition(2),
-        'wrist_flex': arm.getPosition(3),
-        'elbow_flex': arm.getPosition(4),
-        'shoulder_lift': arm.getPosition(5),
-        'shoulder_pan': arm.getPosition(6),
-        'systemdata': asdict(systemdata.collect_data())
-    }
+# Background telemetry — systemdata.collect_data() blocks ~600ms (psutil cpu_percent
+# with 0.5s interval + process iteration sleeps) and IoTConnect MQTT publish adds
+# more. Doing that synchronously from a per-frame perception loop destroys fps, so
+# we snapshot the arm positions on the caller's thread (USB HID is not multi-thread
+# safe) and hand the rest off to a worker thread.
+_telemetry_queue = queue.Queue(maxsize=1)
+_telemetry_worker_started = False
+# Tracks the currently running mode so send_telemetry can stamp every
+# payload with a top-level `state` (e.g. SCANNING/TRACKING/GRABBING/HOLDING
+# for ball mode, "ASL-Gesture" for ASL). Set by run_mode.
+_current_mode = None
 
-    message = json.dumps(telemetry)
-    print(f"IoTConnect Telemetry: {message}")
-    _send_iotconnect_telemetry(telemetry)
+
+def _telemetry_worker_loop():
+    while True:
+        arm_positions, extras = _telemetry_queue.get()
+        try:
+            sysdata = systemdata.collect_data()
+            sys_obj = {'hostname': sysdata.hostname, 'uptime': sysdata.uptime, **asdict(sysdata.system_info)}
+            cpu_obj = {**asdict(sysdata.cpu), 'temp': sysdata.cpu_temp}
+            mem_obj = {**asdict(sysdata.memory), 'temp': sysdata.memory_temp}
+            telemetry = {
+                **arm_positions,
+                'sysInfo_system': sys_obj,
+                'sysInfo_cpu': cpu_obj,
+                'sysInfo_memory': mem_obj,
+                'sysInfo_storage': asdict(sysdata.storage),
+                'sysInfo_gpu': {'usage_percent': sysdata.gpu_usage, 'temp': sysdata.gpu_temp},
+            }
+            if extras:
+                telemetry.update(extras)
+            print(f"IoTConnect Telemetry: {json.dumps(telemetry)}")
+            _send_iotconnect_telemetry(telemetry)
+        except Exception as e:
+            print(f"[telemetry] worker error: {e}")
+
+
+def _ensure_telemetry_worker():
+    global _telemetry_worker_started
+    if _telemetry_worker_started:
+        return
+    _telemetry_worker_started = True
+    threading.Thread(target=_telemetry_worker_loop, daemon=True).start()
+
+
+def send_telemetry(arm, extras=None, positions=None):
+    """Publish telemetry. Pass `positions={id: pos}` to skip re-reading servos
+    (caller already did a batched read)."""
+    _ensure_telemetry_worker()
+    if positions is not None:
+        arm_positions = {
+            'gripper': positions.get(1, 0),
+            'wrist_roll': positions.get(2, 0),
+            'wrist_flex': positions.get(3, 0),
+            'elbow_flex': positions.get(4, 0),
+            'shoulder_lift': positions.get(5, 0),
+            'shoulder_pan': positions.get(6, 0),
+        }
+    else:
+        # USB HID is not thread-safe — read on caller's thread.
+        arm_positions = {
+            'gripper': arm.getPosition(1),
+            'wrist_roll': arm.getPosition(2),
+            'wrist_flex': arm.getPosition(3),
+            'elbow_flex': arm.getPosition(4),
+            'shoulder_lift': arm.getPosition(5),
+            'shoulder_pan': arm.getPosition(6),
+        }
+    # Stamp every payload with top-level `state` from the active mode.
+    if _current_mode is not None:
+        try:
+            mode_state = _current_mode.get_state()
+        except Exception as e:
+            print(f"[telemetry] get_state failed: {e}")
+            mode_state = None
+        if mode_state is not None:
+            extras = dict(extras) if extras else {}
+            extras.setdefault("state", mode_state)
+
+    item = (arm_positions, extras)
+    try:
+        _telemetry_queue.put_nowait(item)
+    except queue.Full:
+        # Drop the stale queued sample, replace with the fresh one.
+        try:
+            _telemetry_queue.get_nowait()
+        except queue.Empty:
+            pass
+        try:
+            _telemetry_queue.put_nowait(item)
+        except queue.Full:
+            pass
 
 
 def clamp_position(value, minimum=0, maximum=1000):
@@ -264,8 +376,7 @@ def clamp_position(value, minimum=0, maximum=1000):
 
 def execute_arm_action(arm, action_name, command_args=None):
     if action_name == 'home':
-        positions = [[1, 500], [2, 500], [3, 500], [4, 500], [5, 500], [6, 500]]
-        arm.setPosition(positions, duration=1500, wait=True)
+        arm.setPosition(HOME_POSITIONS, duration=1500, wait=True)
     elif action_name == 'move_to':
         positions = _parse_move_to_positions(command_args)
         arm.setPosition(positions, duration=1500, wait=True)
@@ -285,185 +396,151 @@ def execute_arm_action(arm, action_name, command_args=None):
         arm.setPosition(4, clamp_position(arm.getPosition(4) - 100), duration=1500, wait=True)
     elif action_name == 'down':
         arm.setPosition(4, clamp_position(arm.getPosition(4) + 100), duration=1500, wait=True)
+    elif action_name == 'wrist_roll_cw':
+        arm.setPosition(2, clamp_position(arm.getPosition(2) + 100), duration=1000, wait=True)
+    elif action_name == 'wrist_roll_ccw':
+        arm.setPosition(2, clamp_position(arm.getPosition(2) - 100), duration=1000, wait=True)
+    elif action_name == 'wrist_flex_up':
+        arm.setPosition(3, clamp_position(arm.getPosition(3) - 100), duration=1000, wait=True)
+    elif action_name == 'wrist_flex_down':
+        arm.setPosition(3, clamp_position(arm.getPosition(3) + 100), duration=1000, wait=True)
+    elif action_name in DEMO_SEQUENCES:
+        for positions, duration_ms in DEMO_SEQUENCES[action_name]:
+            arm.setPosition(positions, duration=duration_ms, wait=True)
     else:
         raise ValueError(f"Unknown action '{action_name}'")
 
     return ACTION_LABELS[action_name]
 
 
-def predict_asl_gesture(arm=None):
-    """Detect ASL gestures from camera feed"""
-    model_name = 'point_net_1.pth'
-    model_path = './model'
+class _FreshCamera:
+    """Background-threaded camera reader.
 
-    if PointNet is None:
-        print("Error: PointNet model not available")
-        return None
+    The driver buffers frames internally while the main thread is blocked on
+    arm moves (wait=True). CAP_PROP_BUFFERSIZE=1 is advisory and not honored
+    by all V4L2 devices, so we run a worker that continuously grabs frames
+    and keeps only the latest. The main loop always sees a fresh frame.
+    """
+
+    def __init__(self, index, frame_w, frame_h):
+        self.cap = cv2.VideoCapture(index)
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, frame_w)
+        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, frame_h)
+        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        self._latest = None
+        self._lock = threading.Lock()
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+
+    def start(self):
+        if not self.cap.isOpened():
+            return False
+        self._thread.start()
+        return True
+
+    def _loop(self):
+        while not self._stop.is_set():
+            ok, frame = self.cap.read()
+            if not ok:
+                time.sleep(0.005)
+                continue
+            with self._lock:
+                self._latest = frame
+
+    def read(self):
+        with self._lock:
+            return self._latest
+
+    def release(self):
+        self._stop.set()
+        self._thread.join(timeout=1.0)
+        self.cap.release()
+
+
+def run_mode(arm, mode, camera_index=2, frame_w=640, frame_h=480,
+             window_title="IOTCONNECT XArm Control", headless=False, perf_every=30):
+    """Generic camera loop. Each frame: capture -> mode.process_frame -> display -> IoTConnect cmd pump.
+    Exits on ESC or 'q' (or Ctrl-C in headless)."""
+    global _current_mode
+    cam = _FreshCamera(camera_index, frame_w, frame_h)
+    if not cam.start():
+        print("[ERROR] Camera failed to open!")
+        return
+    print(f"[INFO] Camera input: {camera_index} ({frame_w}, {frame_h}) — mode={mode.name} headless={headless}")
+
+    _current_mode = mode
+    mode.setup(arm)
+
+    # rolling perf counters
+    n = 0
+    t_cap_sum = 0.0
+    t_proc_sum = 0.0
+    t_total_sum = 0.0
+    t_window_start = time.time()
 
     try:
-        model = torch.load(os.path.join(model_path, model_name), weights_only=False, map_location=device)
-        print("PointNet model loaded successfully")
-    except FileNotFoundError:
-        print(f"Error: Model file {model_name} not found in {model_path}")
-        return None
+        # wait briefly for first frame
+        t0 = time.time()
+        while cam.read() is None and time.time() - t0 < 2.0:
+            time.sleep(0.02)
 
-    input_video = 2
-    cap = cv2.VideoCapture(input_video)
-    frame_width = 640
-    frame_height = 480
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, frame_width)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, frame_height)
+        while True:
+            frame_t0 = time.perf_counter()
+            t_a = time.perf_counter()
+            frame = cam.read()
+            if frame is None:
+                time.sleep(0.01)
+                continue
+            t_cap = time.perf_counter() - t_a
 
-    print(f"[INFO] Camera input: {input_video} ({frame_width}, {frame_height})")
+            t_b = time.perf_counter()
+            display = mode.process_frame(frame, arm)
+            t_proc = time.perf_counter() - t_b
+            if display is None:
+                display = frame
 
-    last_gesture = None
-    gesture_cooldown = 0
+            if not headless:
+                cv2.imshow(window_title, display)
+                key = cv2.waitKey(1)
+                if key == 27 or key == 113:
+                    break
 
-    while True:
-        flag, frame = cap.read()
-        if not flag:
-            print("[ERROR] Camera read failed!")
-            break
+            if arm is not None:
+                process_iotconnect_commands(arm)
 
-        cv2_image = cv2.flip(frame.copy(), 1)
-        results = hands.process(cv2_image)
-
-        image_height, image_width, _ = cv2_image.shape
-        annotated_image = cv2_image.copy()
-        current_gesture = None
-
-        if results.multi_hand_landmarks:
-            print(f"Detected Hands: {len(results.multi_hand_landmarks)}")
-
-            for hand_id in range(len(results.multi_hand_landmarks)):
-                hand_handedness = results.multi_handedness[hand_id]
-                hand_landmarks = results.multi_hand_landmarks[hand_id]
-                handedness = hand_handedness.classification[0].label
-                print(f'[INFO] Detected Hand: "{handedness}"')
-
-                hand_x = text_x
-                hand_y = text_y
-                hand_color = text_color
-
-                if handedness == "Left":
-                    hand_x = 10
-                    hand_y = 30
-                    hand_color = (0, 255, 0)
-                    hand_msg = 'LEFT='
-                elif handedness == "Right":
-                    hand_x = image_width - 128
-                    hand_y = 30
-                    hand_color = (0, 0, 255)
-                    hand_msg = 'RIGHT='
-
-                points_raw = []
-                for lm in hand_landmarks.landmark:
-                    points_raw.append([lm.x, lm.y, lm.z])
-                points_raw = np.array(points_raw)
-
-                points_norm = points_raw.copy()
-                min_x = np.min(points_raw[:, 0])
-                max_x = np.max(points_raw[:, 0])
-                min_y = np.min(points_raw[:, 1])
-                max_y = np.max(points_raw[:, 1])
-
-                for i in range(len(points_raw)):
-                    if max_x > min_x:
-                        points_norm[i][0] = (points_norm[i][0] - min_x) / (max_x - min_x)
-                    if max_y > min_y:
-                        points_norm[i][1] = (points_norm[i][1] - min_y) / (max_y - min_y)
-                    if handedness == "Right":
-                        points_norm[i][0] = 1.0 - points_norm[i][0]
-
-                for hc in mp_hands.HAND_CONNECTIONS:
-                    cv2.line(annotated_image,
-                             (int(points_raw[hc[0]][0] * image_width),
-                              int(points_raw[hc[0]][1] * image_height)),
-                             (int(points_raw[hc[1]][0] * image_width),
-                              int(points_raw[hc[1]][1] * image_height)),
-                             hand_color, 2)
-
-                try:
-                    pointst = torch.tensor([points_norm]).float().to(device)
-                    label = model(pointst)
-                    label = label.detach().cpu().numpy()
-                    asl_id = np.argmax(label)
-                    confidence = float(label[0][asl_id])
-                    asl_sign = list(char2int.keys())[list(char2int.values()).index(asl_id)]
-
-                    asl_text = hand_msg + asl_sign
-                    cv2.putText(annotated_image, asl_text, (hand_x, hand_y),
-                               text_fontType, text_fontSize, hand_color, text_lineSize, text_lineType)
-
-                    action_detected = None
-                    action_name = None
-                    if handedness == "Left":
-                        action_name = LEFT_GESTURE_TO_ACTION.get(asl_sign)
-                    elif handedness == "Right":
-                        action_name = RIGHT_GESTURE_TO_ACTION.get(asl_sign)
-                    if action_name:
-                        action_detected = ACTION_LABELS[action_name]
-
-                    if action_detected:
-                        action_text = '[' + action_detected + ']'
-                        cv2.putText(annotated_image, action_text,
-                                    (hand_x, hand_y * 2),
-                                    text_fontType, text_fontSize,
-                                    hand_color, text_lineSize, text_lineType)
-                        print(f"Detected ASL: {asl_sign}, Action: {action_detected}")
-
-                    current_gesture = (handedness, asl_sign, confidence, points_raw)
-
-                except Exception as e:
-                    print(f"[ERROR] Exception during ASL classification: {e}")
-
-        cv2.imshow("IOTCONNECT XArm Control", annotated_image)
-        key = cv2.waitKey(10)
-
-        if arm is not None:
-            process_iotconnect_commands(arm)
-
-        if key == 27 or key == 113:
-            break
-
-        if gesture_cooldown > 0:
-            gesture_cooldown -= 1
-        elif current_gesture:
-            gesture_signature = current_gesture[:2]
-            if gesture_signature != last_gesture:
-                last_gesture = gesture_signature
-                gesture_cooldown = 1
-                control_arm_with_gesture(arm, current_gesture[0], current_gesture[1])
-
-    cap.release()
-    cv2.destroyAllWindows()
-    return None
+            t_total = time.perf_counter() - frame_t0
+            n += 1
+            t_cap_sum += t_cap
+            t_proc_sum += t_proc
+            t_total_sum += t_total
+            if n >= perf_every:
+                elapsed = time.time() - t_window_start
+                fps = n / elapsed if elapsed > 0 else 0.0
+                print(f"[perf] n={n} fps={fps:.1f}  cap={t_cap_sum/n*1000:.1f}ms  "
+                      f"proc={t_proc_sum/n*1000:.1f}ms  total={t_total_sum/n*1000:.1f}ms")
+                n = 0
+                t_cap_sum = t_proc_sum = t_total_sum = 0.0
+                t_window_start = time.time()
+    finally:
+        mode.teardown(arm)
+        cam.release()
+        if not headless:
+            cv2.destroyAllWindows()
+        _current_mode = None
 
 
-def control_arm_with_gesture(arm, handedness, gesture):
-    """Control XArm based on detected ASL gesture and handedness"""
-    try:
-        action_name = None
-
-        if handedness == 'Left':
-            action_name = LEFT_GESTURE_TO_ACTION.get(gesture)
-        elif handedness == 'Right':
-            action_name = RIGHT_GESTURE_TO_ACTION.get(gesture)
-
-        else:
-            print(f"Unknown handedness '{handedness}' for gesture '{gesture}'")
-            return
-
-        if action_name:
-            action_detected = execute_arm_action(arm, action_name)
-            print(f"Action: {action_detected}")
-            send_telemetry(arm)
-
-    except Exception as e:
-        print(f"Error controlling arm: {e}")
+def parse_args():
+    parser = argparse.ArgumentParser(description="IOTCONNECT XArm vision demo")
+    parser.add_argument('--mode', default='asl', help="Vision mode (default: asl)")
+    parser.add_argument('--camera', type=int, default=2, help="OpenCV camera index (default: 2)")
+    parser.add_argument('--headless', action='store_true', help="Disable preview window (for SSH/perf testing)")
+    parser.add_argument('--perf-every', type=int, default=30, help="Print perf stats every N frames")
+    return parser.parse_args()
 
 
 def main():
+    args = parse_args()
+    arm = None
     try:
         print("Connecting to XArm 1S...")
         arm = xarm.Controller('USB')
@@ -477,29 +554,32 @@ def main():
             print("IoTConnect is unavailable; running without cloud connectivity.")
 
         print("Initializing to home position...")
-        home_positions = [[1,500], [2,500], [3,500], [4,500], [5,500], [6,500]]  # Servos 1-6
-        arm.setPosition(home_positions, duration=2000, wait=True)
+        arm.setPosition(HOME_POSITIONS, duration=2000, wait=True)
         print("Home position reached!")
 
-        print("Starting ASL gesture control...")
-        predict_asl_gesture(arm)
-        
+        mode = make_mode(args.mode)
+        print(f"Starting vision mode: {mode.name}")
+        run_mode(arm, mode, camera_index=args.camera,
+                 headless=args.headless, perf_every=args.perf_every)
+
     except Exception as e:
         print(f"Error: {e}")
         print("Make sure XArm 1S is connected via USB and powered on.")
-        print("Also ensure camera is available and PointNet model files exist.")
+        print("Also ensure camera is available and any required model files exist.")
 
     finally:
         try:
             print("Turning off servos...")
-            arm.servoOff()
-        except:
+            if arm is not None:
+                arm.servoOff()
+        except Exception:
             pass
         if iotc_publisher is not None:
             try:
                 iotc_publisher.disconnect()
             except Exception:
                 pass
+
 
 if __name__ == "__main__":
     main()
