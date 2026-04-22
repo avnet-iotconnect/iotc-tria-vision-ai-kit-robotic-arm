@@ -1,7 +1,5 @@
 # TRIA Vision AI Kit 6490 + /IOTCONNECT XArm Vision Demos
 
-test
-
 This project showcases the **TRIA Vision AI Kit 6490** running **/IOTCONNECT** integration with the Hiwonder XArm 1S robotic arm. It ships two interchangeable vision modes selectable at launch with `--mode`:
 
 - **`asl`** (default) — American Sign Language gesture control. Operator drives the arm by signing letters in front of a webcam.
