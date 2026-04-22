@@ -12,7 +12,12 @@ It ships two interchangeable vision modes selectable at launch with
   pans/tilts/advances on its own to center, approach, and grab it.
 
 Both modes run on the TRIA board, stream live telemetry to
-/IOTCONNECT, and accept remote commands from the cloud.
+/IOTCONNECT, and accept remote commands from the cloud. The demo
+also supports **live WebRTC video streaming** via AWS Kinesis Video
+Streams (KVS), letting you watch the arm's wrist camera feed in real
+time directly from the /IOTCONNECT portal. Streaming is opt-in and
+enabled with the `--webrtc` flag so it never interferes with the
+core vision and arm-control functionality.
 
 ## Key Features
 
@@ -27,6 +32,10 @@ Both modes run on the TRIA board, stream live telemetry to
   approaches, and grabs a colored ball with no operator input
 - **Robotic Arm Control**: Hiwonder XArm 1S with 6-DOF movement and
   gripper control
+- **Live WebRTC Video Streaming**: Opt-in KVS WebRTC stream
+  (`--webrtc`) delivers the wrist camera feed to the /IOTCONNECT
+  portal in real time with no interference to arm control or vision
+  processing
 - **Edge-to-Cloud Architecture**: Local AI inference on TRIA board
   with cloud connectivity via /IOTCONNECT
 
@@ -42,6 +51,9 @@ edge-to-cloud AI robotics solution.
   with multi-camera support, perfect for real-time AI inference
 - **/IOTCONNECT Integration**: Seamless cloud connectivity for
   telemetry, remote monitoring, and command execution
+- **KVS WebRTC Streaming**: /IOTCONNECT provisions a dedicated AWS
+  KVS signaling channel per device, enabling low-latency peer-to-peer
+  video directly in the browser — no extra infrastructure required
 - **Edge AI**: Run neural network inference locally on TRIA board
   while streaming results to the cloud
 - **Industrial IoT**: Enterprise-grade IoT platform for robotics and
