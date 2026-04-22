@@ -39,27 +39,8 @@ core vision and arm-control functionality.
 - **Edge-to-Cloud Architecture**: Local AI inference on TRIA board
   with cloud connectivity via /IOTCONNECT
 
-## Setup
 
-This project is designed to run on the **TRIA Vision AI Kit 6490**
-with **/IOTCONNECT** cloud integration, creating a powerful
-edge-to-cloud AI robotics solution.
-
-### Why TRIA Vision AI Kit 6490 + /IOTCONNECT?
-
-- **TRIA Vision AI Kit 6490**: Energy-efficient Qualcomm QCS6490 SOC
-  with multi-camera support, perfect for real-time AI inference
-- **/IOTCONNECT Integration**: Seamless cloud connectivity for
-  telemetry, remote monitoring, and command execution
-- **KVS WebRTC Streaming**: /IOTCONNECT provisions a dedicated AWS
-  KVS signaling channel per device, enabling low-latency peer-to-peer
-  video directly in the browser — no extra infrastructure required
-- **Edge AI**: Run neural network inference locally on TRIA board
-  while streaming results to the cloud
-- **Industrial IoT**: Enterprise-grade IoT platform for robotics and
-  automation applications
-
-### Hardware Requirements
+## Hardware Requirements
 
 - **[TRIA Vision AI-KIT 6490](https://www.newark.com/avnet/sm2-sk-qcs6490-ep6-kit001/dev-kit-64bit-arm-cortex-a55-a78/dp/51AM9843)**
   — Main compute platform with Qualcomm QCS6490 SOC
@@ -81,7 +62,7 @@ edge-to-cloud AI robotics solution.
 - USB Mouse and Keyboard
 
 
-### Board Setup
+## Board Setup
 
 1. **Hardware Connections**:
    - Connect 12VDC USB-C power supply to the USB-C connector labeled
@@ -116,7 +97,7 @@ edge-to-cloud AI robotics solution.
    python3 main.py
    ```
 
-### /IOTCONNECT Device Onboarding
+## /IOTCONNECT Device Onboarding
 
 > [!IMPORTANT]
 > If you intend to run this demo with the `--webrtc` flag to enable
@@ -137,7 +118,7 @@ Follow [this guide](https://github.com/avnet-iotconnect/iotc-python-lite-sdk-dem
 to onboard your TRIA Vision AI Kit 6490 to /IOTCONNECT.
 
 
-### Supported Gestures
+## Supported Gestures
 
 **Left Hand (Arm Movement)**:
 - A: Advance, B: Back-up, L: Left, R: Right, U: Up, Y: Down, H: Home
@@ -145,7 +126,7 @@ to onboard your TRIA Vision AI Kit 6490 to /IOTCONNECT.
 **Right Hand (Gripper Control)**:
 - A: Close Gripper, B: Open Gripper
 
-### Remote Command Control via /IOTCONNECT
+## Remote Command Control via /IOTCONNECT
 
 Control your XArm robot remotely through /IOTCONNECT cloud commands:
 - **Movement Commands**: `advance`, `backup`, `left`, `right`, `up`,
@@ -156,15 +137,7 @@ Control your XArm robot remotely through /IOTCONNECT cloud commands:
 - **Command Acknowledgment**: Real-time feedback and execution
   confirmation
 
-### /IOTCONNECT Device Configuration
-- **Device Config JSON**: Contains your /IOTCONNECT platform
-  credentials and device information
-- **Device Certificates**: X.509 certificates for secure cloud
-  connectivity
-- **Platform Settings**: AWS IoT, Azure IoT, or other supported IoT
-  platforms
-
-### Remote Command Execution
+## Remote Command Execution
 
 The system supports real-time command execution through /IOTCONNECT:
 
