@@ -118,9 +118,6 @@ edge-to-cloud AI robotics solution.
 
 ### /IOTCONNECT Device Onboarding
 
-Follow [this guide](https://github.com/avnet-iotconnect/iotc-python-lite-sdk-demos/blob/main/common/general-guides/UI-ONBOARD.md)
-to onboard your TRIA Vision AI Kit 6490 to /IOTCONNECT.
-
 > [!IMPORTANT]
 > If you intend to run this demo with the `--webrtc` flag to enable
 > live video streaming, the device **must** be created in /IOTCONNECT
@@ -135,6 +132,9 @@ to onboard your TRIA Vision AI Kit 6490 to /IOTCONNECT.
 > select WebRTC at that point. Devices created without the
 > `robarmwebrtc` template can still run the demo without the
 > `--webrtc` flag and will not be affected.
+
+Follow [this guide](https://github.com/avnet-iotconnect/iotc-python-lite-sdk-demos/blob/main/common/general-guides/UI-ONBOARD.md)
+to onboard your TRIA Vision AI Kit 6490 to /IOTCONNECT.
 
 
 ### Supported Gestures
@@ -448,38 +448,6 @@ Check camera detection:
 ```bash
 ls /dev/video*  # Should show available camera devices
 ```
-
-
-## Important Notes for TRIA + /IOTCONNECT Operation
-
-### TRIA Vision AI Kit 6490 Best Practices
-- Always enable the XArm robot before sending movement commands from
-  the TRIA board
-- Use `arm.query("HOME")` to safely return to home position before
-  shutdown
-- Ensure stable ethernet connection for reliable /IOTCONNECT cloud
-  communication
-- Monitor TRIA board temperature during extended AI inference sessions
-
-### /IOTCONNECT Integration Notes
-- Device telemetry streams continuously when /IOTCONNECT connection
-  is active
-- Remote commands are queued and executed asynchronously on the TRIA
-  board
-- Local telemetry logging provides backup when cloud connectivity is
-  interrupted
-- Use /IOTCONNECT dashboard to monitor TRIA board performance and
-  gesture recognition accuracy
-
-### ASL Gesture Recognition on TRIA
-- Camera and XArm USB connections must be maintained during operation
-- Gesture recognition runs locally on TRIA board for low-latency
-  robotic control
-- Confidence scores and hand landmarks are transmitted to /IOTCONNECT
-  for analysis
-- Model inference optimized for TRIA's Qualcomm QCS6490 AI
-  capabilities
-- Keep safety zone clear before moving.
 
 ## References & Documentation
 
