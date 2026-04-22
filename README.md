@@ -42,31 +42,35 @@ core vision and arm-control functionality.
 
 ## Hardware Requirements
 
-- **[TRIA Vision AI-KIT 6490](https://www.newark.com/avnet/sm2-sk-qcs6490-ep6-kit001/dev-kit-64bit-arm-cortex-a55-a78/dp/51AM9843)**
-  — Main compute platform with Qualcomm QCS6490 SOC
-- **[HiWonder xArm1S](https://www.amazon.com/LewanSoul-Programmable-Feedback-Parameter-Programming/dp/B0CHY63V9P?th=1)**
-  — Robotic Arm connected via USB
+### Included with **[TRIA Vision AI-KIT 6490](https://www.newark.com/avnet/sm2-sk-qcs6490-ep6-kit001/dev-kit-64bit-arm-cortex-a55-a78/dp/51AM9843)**
 - USB-C Cable for flashing and USB-ADB debug (included with kit)
 - USB-C 12VDC Power Supply and Cable (included with kit)
-- Ethernet Cable (not included)
+
+### Purchased Separately 
+- **[HiWonder xArm1S](https://www.amazon.com/LewanSoul-Programmable-Feedback-Parameter-Programming/dp/B0CHY63V9P?th=1)**
+- Ethernet Cable 
 - USB camera for hand tracking (ASL mode) and eye-in-hand visual
   servoing (ball mode). For the ball mode the camera is mounted on
   the **wrist roll** servo with zip ties so it pitches with the
-  gripper. The build pictured here uses a USB camera module pulled
-  out of a Logitech webcam shell to keep the wrist payload small.
-  **Recommended:** a bare USB-camera PCB module mounted directly
-  behind the gripper jaws — that gives the cleanest line of sight to
-  whatever the gripper is about to grab and removes the parallax that
-  makes the camera-gripper offset calibration necessary.
-- HDMI Monitor with Active
+  gripper
+
+> [!TIP]
+> If possible, it is recommended to use a bare USB-camera PCB module mounted directly
+> behind the gripper jaws, giving the cleanest line of sight to
+> whatever the gripper is about to grab and removing the parallax that
+> makes the camera-gripper offset calibration necessary.
+
 - USB Mouse and Keyboard
+- HDMI Monitor with **active** mini-DP to HDMI adapter
+
+> [!IMPORTANT]
+> The mini-DP to HDMI adapter must be **active** so to avoid purchasing the wrong product it is recommended to use the adapter used and tested by Avnet's engineer available [here](https://www.amazon.com/Cable-Matters-DisplayPort-Supporting-Technology/dp/B00PJ3LSIG/ref=sr_1_1?crid=XR4HA3U2IVD0&dib=eyJ2IjoiMSJ9.7o239haE8CcYdAqsOPF7Se6OXe8Sz47i-Az7Mq9_PvLySbMg4xxB8QbnT7rNODDTxSh882r-DD24OPLilxONY3rqmtq2d-y9-PdgAE7xHVKKFR7sSypCPC5w6yW8QYkxKJag31Qy-DlnbIz1F9XIBGWrG6Ric9NSsSSTfHpZG58gk_bvzo6qGpsQa11HI9C3rp4MSgjK6X5zBcp_98AzK_elv_1tTuomClMsDK_tZuw.c21P4pWnM5M33qDFmO5u0CjFbJWeyxQZ93-Fv3nExKw&dib_tag=se&keywords=cable+matters+mini+dp+to+hdmi&qid=1762415607&sprefix=%2Caps%2C84&sr=8-1).
 
 
 ## Board Setup
 
 1. **Hardware Connections**:
-   - Connect 12VDC USB-C power supply to the USB-C connector labeled
-     #1
+   - Connect 12VDC USB-C power supply to the USB-C "DC PWR" connector
    - Connect ethernet cable to the board's ethernet port
    - Connect USB mouse/keyboard to USB-A ports
    - Connect second USB-C cable for USB-ADB communication
