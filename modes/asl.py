@@ -15,7 +15,7 @@ import torch
 
 from .base import Mode
 
-TELEMETRY_INTERVAL_S = 2.0
+TELEMETRY_INTERVAL_S = 5.0
 
 try:
     from point_net import PointNet

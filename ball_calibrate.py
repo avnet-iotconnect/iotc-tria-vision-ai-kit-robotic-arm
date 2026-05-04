@@ -26,7 +26,7 @@ import cv2
 import numpy as np
 import xarm
 
-OUT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ball_color.json")
+DEFAULT_OUT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ball_color.json")
 PATCH_RADIUS = 3      # 7x7 sample patch around each click
 HUE_PAD = 8           # extra hue tolerance on each side
 SAT_PAD = 25
@@ -80,7 +80,7 @@ def hold_all(arm):
         print(f"[calib] hold failed: {e}")
 
 
-def save_range(lower, upper, camera_index):
+def save_range(lower, upper, camera_index, out_path):
     payload = {
         "camera_index": int(camera_index),
         "h_min": int(lower[0]), "h_max": int(upper[0]),
@@ -88,9 +88,9 @@ def save_range(lower, upper, camera_index):
         "v_min": int(lower[2]), "v_max": int(upper[2]),
         "samples": [list(s) for s in samples],
     }
-    with open(OUT_PATH, "w") as f:
+    with open(out_path, "w") as f:
         json.dump(payload, f, indent=2)
-    print(f"\nSaved {len(samples)} samples to {OUT_PATH}")
+    print(f"\nSaved {len(samples)} samples to {out_path}")
     print(f"  HSV lower: {lower.tolist()}")
     print(f"  HSV upper: {upper.tolist()}")
 
@@ -101,16 +101,26 @@ def main():
     parser.add_argument("--camera", type=int, default=2, help="OpenCV camera index (default 2)")
     parser.add_argument("--width", type=int, default=640)
     parser.add_argument("--height", type=int, default=480)
+    parser.add_argument("--output", default=DEFAULT_OUT_PATH,
+                        help="Output JSON path (default ball_color.json — use --output box_color.json to calibrate the box for pickplace mode)")
+    parser.add_argument("--no-prompt", action="store_true",
+                        help="Skip the 'press Enter to release torque' safety prompt. "
+                             "Use ONLY when launched from a panel icon at the board where the user "
+                             "is already supporting the arm. Stdin (input()) is unavailable when "
+                             "launched without a terminal.")
     args = parser.parse_args()
 
     print("[calib] connecting to xArm...")
     arm = xarm.Controller('USB')
 
-    print("\n" + "=" * 60)
-    print(" SAFETY: ALL torque is about to drop. Support the arm with your")
-    print(" hand before pressing Enter, or it will swing under gravity.")
-    print("=" * 60)
-    input("[calib] Holding the arm? Press Enter to release torque... ")
+    if args.no_prompt:
+        print("[calib] --no-prompt: skipping safety prompt (assuming arm is supported)")
+    else:
+        print("\n" + "=" * 60)
+        print(" SAFETY: ALL torque is about to drop. Support the arm with your")
+        print(" hand before pressing Enter, or it will swing under gravity.")
+        print("=" * 60)
+        input("[calib] Holding the arm? Press Enter to release torque... ")
     release_all(arm)
 
     cap = cv2.VideoCapture(args.camera)
@@ -164,7 +174,7 @@ def main():
             if rng is None:
                 print("Nothing to save yet — click the ball first.")
                 continue
-            save_range(rng[0], rng[1], args.camera)
+            save_range(rng[0], rng[1], args.camera, args.output)
             break
 
     cap.release()

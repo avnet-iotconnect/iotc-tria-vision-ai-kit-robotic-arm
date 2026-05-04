@@ -40,7 +40,7 @@ MIN_TRIM_STEP = 8          # any non-zero trim is bumped to at least this magnit
 MIN_TRIM_STEP_PAN = 18     # shoulder_pan carries the whole forearm + wrist + camera, so its static friction is much higher than wrist_flex — 8-unit commands stall in extended poses (shoulder_lift>600). Verified 2026-04-19 with telemetry showing pan stuck at 552-553 while controller commanded +8 every frame.
 MOVE_DURATION_MS = 220     # per-step move duration; raised so small servo commands actually move (under 150ms many bus servos ignore sub-5-unit deltas)
 CENTER_DEADBAND_PX = 60    # widened 2026-04-19 from 25 — must be >= MIN_TRIM_STEP_PAN × pixels-per-servo-unit (~7 px/unit measured), otherwise a single floored pan command (18 units = ~126 px of ball motion) flings the ball clear past the deadband and the controller oscillates +18, -18, +18 forever. Trade-off: GRAB now fires at up to 60 px off-target, but the gripper jaw is wider than that
-APPROACH_DEADBAND_PX = 60  # tightened to match CENTER_DEADBAND_PX 2026-04-19 — looser values (was 120) let lift descent re-open tilt_err every frame, racing the wrist correction so tilt_err never converged. With this value the controller serializes: center first, then descend, then re-center if descent geometry re-opens tilt
+APPROACH_DEADBAND_PX = 60  # 2026-05-02 reverted from a brief 120 experiment. On this Tria + downward-pointing-Brio geometry, descent (shoulder_lift extending forward) moves the ball further past the camera frame ("behind" the arm) — descent reframing fights wrist trim, ball escapes downward, controller cycles SCANNING → TRACKING → SCANNING. Keeping descent gated by tight 60 means: center first (slow when wrist friction-stalls just outside 60), then descend; if you see "stuck at dy~67 forever," the fix is to lower MIN_TRIM_STEP / raise TILT_GAIN so wrist breaks friction sooner — NOT to widen this deadband.
 TARGET_RADIUS_PX = 220     # ball "close enough" radius in pixels (lowered to match what we actually observe at grab distance for the current ball)
 RADIUS_TOLERANCE = 40      # +/- around TARGET_RADIUS_PX considered "at distance"
 MIN_CONTOUR_AREA = 200     # ignore tiny mask blobs (noise)
@@ -68,7 +68,7 @@ ENABLE_PREDICTION = False        # master switch for extrapolating ball motion w
 POS_BUFFER_LEN = 5               # how many recent ball positions we keep for velocity est
 MIN_VELOCITY_PX_PER_FRAME = 2.0  # velocity below this = don't bother predicting
 MAX_PREDICT_FRAMES = 15          # cap predictions so the arm doesn't run away on a bad estimate
-TELEMETRY_INTERVAL_S = 2.0       # how often we publish ball telemetry to IoTConnect
+TELEMETRY_INTERVAL_S = 5.0       # how often we publish ball telemetry to /IOTCONNECT — matches device template dataFrequency
 GRIPPER_CLOSE_TARGET = 650  # commanded close position; actual may stall below this on large objects
 GRIPPER_STALL_SLACK = 10    # if actual < target - this, assume stalled against object
 GRIPPER_RELAX_OFFSET = 5    # back off this many units from the stall point to release torque
@@ -223,7 +223,8 @@ class BallFollowMode(Mode):
                             (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7,
                             (0, 255, 255), 2, cv2.LINE_AA)
                 self._log(f"HOLDING: pos={gpos} target={self.hold_target}")
-                self.state = "IDLE"
+                self.state = "HOLDING"
+                self._maybe_send_telemetry(arm, send_telemetry, positions=pos)
                 return annotated
 
         t_detect_start = time.perf_counter()
@@ -342,10 +343,10 @@ class BallFollowMode(Mode):
             self._do_grab(arm)
             self.state = "HOLDING"
             try:
-                send_telemetry(arm)
+                send_telemetry(arm, extras={"ballTrack": self.telemetry()}, positions=pos)
+                self.last_telemetry_at = time.time()
             except Exception as e:
                 print(f"[ball] telemetry after grab failed: {e}")
-            self.state = "IDLE"
             return annotated
 
         # Throttle servo commands so we don't spam at full frame rate.

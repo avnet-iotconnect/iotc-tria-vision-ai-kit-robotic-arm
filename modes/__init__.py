@@ -10,4 +10,7 @@ def make_mode(name: str) -> Mode:
     if name == "ball":
         from .ball_follow import BallFollowMode
         return BallFollowMode()
+    if name == "pickplace":
+        from .pickplace import PickPlaceMode
+        return PickPlaceMode()
     raise ValueError(f"Unknown mode: {name}")
