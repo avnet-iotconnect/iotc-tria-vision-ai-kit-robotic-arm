@@ -78,6 +78,13 @@ fi
 # Source conda for the rest of this script
 source "$MINIFORGE_DIR/etc/profile.d/conda.sh"
 
+# Use absolute paths to the env's binaries throughout. `conda activate` in a
+# non-interactive script doesn't always prepend PATH reliably, and the system
+# /usr/bin/pip3 is broken on this board image (no `pip` module installed),
+# so calling bare `pip3` falls through to it and crashes.
+ENV_BIN="$MINIFORGE_DIR/envs/$CONDA_ENV/bin"
+ENV_PYTHON="$ENV_BIN/python3"
+
 # ---- 3. Create conda env if missing -------------------------------------
 if ! conda env list | grep -qE "^$CONDA_ENV\s"; then
     echo
@@ -88,12 +95,15 @@ else
     echo "[2/6] conda env $CONDA_ENV exists — skipping create"
 fi
 
-conda activate "$CONDA_ENV"
-
 # ---- 4. Install pip requirements ----------------------------------------
+# Use `python -m pip` instead of a `pip`/`pip3` binary path — different conda
+# env builds ship pip under different names (some have `pip`, some only
+# `pip3`, some neither until ensurepip is run). `-m pip` always works as
+# long as the env's python is functional.
 echo
 echo "[3/6] Installing pip requirements..."
-pip3 install -q -r requirements.txt
+"$ENV_PYTHON" -m ensurepip --upgrade >/dev/null 2>&1 || true
+"$ENV_PYTHON" -m pip install -q -r requirements.txt
 
 # ---- 5. Download PointNet model if missing ------------------------------
 if [ ! -f "$PROJECT_DIR/model/point_net_1.pth" ]; then
@@ -135,7 +145,7 @@ if [ -f "$WESTON_INI" ]; then
     echo
     echo "[6/6] Setting up Weston panel icons + launchers..."
     mkdir -p "$ICONS_DIR"
-    "$MINIFORGE_DIR/envs/$CONDA_ENV/bin/python3" - <<EOF
+    "$ENV_PYTHON" - <<EOF
 import os
 from PIL import Image, ImageDraw, ImageFont
 OUT = "$ICONS_DIR"
