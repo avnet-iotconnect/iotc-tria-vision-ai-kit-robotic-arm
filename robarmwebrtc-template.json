@@ -1,6 +1,6 @@
 {
-    "code": "robarmwebrtc",
-    "name": "robarmwebrtc",
+    "code": "robarmRTC",
+    "name": "robarmRTC",
     "authType": 2,
     "attributes": [
         {

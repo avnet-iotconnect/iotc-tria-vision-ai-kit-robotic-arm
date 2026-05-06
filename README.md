@@ -83,23 +83,64 @@ core vision and arm-control functionality.
    - Login as `root` with password `oelinux123`
 
 4. **Clone and Setup Project**:
+
+   Clone the repository and navigate into it:
    ```bash
    git clone https://github.com/avnet-iotconnect/iotc-tria-vision-ai-kit-robotic-arm.git
    cd iotc-tria-vision-ai-kit-robotic-arm
-   
+   ```
+
+   Download the Miniforge3 installer:
+   ```bash
    wget "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
-   bash      Miniforge3-$(uname)-$(uname -m).sh
+   ```
 
-   conda      create -y -n iotc-tria-xarm python=3.11
-   conda      activate iotc-tria-xarm
-   conda      install opencv -c conda-forge
+   Run the installer:
+   ```bash
+   bash Miniforge3-$(uname)-$(uname -m).sh
+   ```
 
-   pip3 install -r requirements.txt
-   
-   source model/get_model.sh
+   The installer is interactive — respond to each prompt as follows:
+   - **License agreement**: Press **ENTER** to scroll through the license text, then type `yes` and press **ENTER** to accept.
+   - **Installation location**: Press **ENTER** to confirm the default path.
+   - **Shell initialization**: Type `yes` and press **ENTER** when asked `Proceed with initialization?` to allow conda to configure your shell automatically.
 
+   After installation completes, reload your shell profile so the `conda` command becomes available:
+   ```bash
+   source ~/.bashrc
+   ```
+
+   Create and activate the project's conda environment:
+   ```bash
+   conda create -y -n iotc-tria-xarm python=3.11 pip
+   conda activate iotc-tria-xarm
+   ```
+
+   Install OpenCV:
+   ```bash
+   conda install opencv -c conda-forge
+   ```
+
+   Install the remaining Python dependencies:
+   ```bash
+   python -m pip install -r requirements.txt
+   ```
+
+   Download the AI model:
+   ```bash
+   sh model/get_model.sh
+   ```
+
+   Launch the demo:
+   ```bash
    python3 main.py
    ```
+
+   > [!NOTE]
+   > If running over SSH without a monitor connected, add the `--headless` flag to suppress the camera preview window:
+   > ```bash
+   > python3 main.py --headless
+   > ```
 
 ## /IOTCONNECT Device Onboarding
 
@@ -107,7 +148,7 @@ core vision and arm-control functionality.
 > If you intend to run this demo with the `--webrtc` flag to enable
 > live video streaming, the device **must** be created in /IOTCONNECT
 > using the `robarmwebrtc` template provided in this repository
-> ([robArm2_template.json](robArm2_template.json)). During the device
+> ([robarmwebrtc-template.json](robarmwebrtc-template.json)). During the device
 > creation process you will be prompted to select a **Stream
 > Resource** — choose **WebRTC**. The /IOTCONNECT backend provisions
 > a KVS WebRTC signaling channel at device creation time and this
@@ -120,6 +161,15 @@ core vision and arm-control functionality.
 
 Follow [this guide](https://github.com/avnet-iotconnect/iotc-python-lite-sdk-demos/blob/main/common/general-guides/UI-ONBOARD.md)
 to onboard your TRIA Vision AI Kit 6490 to /IOTCONNECT.
+
+> [!CAUTION]
+> In **Step 14** of the onboarding guide, you must run the quickstart script from inside the project directory so that the device certificate and config files are placed where this demo expects them. Make sure you are in the project directory first, then use this command instead of the one shown in the guide:
+> ```bash
+> wget https://raw.githubusercontent.com/avnet-iotconnect/iotc-python-lite-sdk-demos/refs/heads/main/common/scripts/quickstart.sh && bash ./quickstart.sh
+> ```
+
+> [!NOTE]
+> The starter `app.py` downloaded by the quickstart script can be disregarded — this demo uses `main.py` instead.
 
 
 ## Supported Gestures

@@ -5,6 +5,7 @@ classify the sign with PointNet, and dispatch a mapped arm action. Only one
 action fires per distinct gesture (cooldown until the recognized sign changes).
 """
 
+import contextlib
 import os
 import time
 
@@ -12,6 +13,20 @@ import cv2
 import mediapipe as mp
 import numpy as np
 import torch
+
+
+@contextlib.contextmanager
+def _suppress_c_stderr():
+    """Redirect C-level fd 2 to /dev/null to silence third-party C library warnings."""
+    devnull_fd = os.open(os.devnull, os.O_WRONLY)
+    saved_fd = os.dup(2)
+    os.dup2(devnull_fd, 2)
+    os.close(devnull_fd)
+    try:
+        yield
+    finally:
+        os.dup2(saved_fd, 2)
+        os.close(saved_fd)
 
 from .base import Mode
 
@@ -67,7 +82,10 @@ class ASLMode(Mode):
         self.model = torch.load(path, weights_only=False, map_location=self.device)
         print(f"PointNet model loaded from {path}")
         mp_hands = mp.solutions.hands
-        self.hands = mp_hands.Hands(min_detection_confidence=0.5, min_tracking_confidence=0.5)
+        with _suppress_c_stderr():
+            self.hands = mp_hands.Hands(min_detection_confidence=0.5, min_tracking_confidence=0.5)
+            # Force lazy XNNPACK/TF Lite init now so it doesn't print during the frame loop
+            self.hands.process(np.zeros((480, 640, 3), dtype=np.uint8))
         self._mp_hands = mp_hands
 
     def teardown(self, arm):

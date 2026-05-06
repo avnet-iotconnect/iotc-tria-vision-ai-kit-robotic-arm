@@ -80,31 +80,35 @@ HOME_POSITIONS = [[1, 500], [2, 500], [3, 500], [4, 500], [5, 500], [6, 500]]
 # Every sequence must end at HOME_POSITIONS so the next action starts from a known pose.
 DEMO_SEQUENCES = {
     'demo_wave': [
-        ([[5, 250], [4, 250], [3, 500], [2, 500]], 1500),
-        ([[2, 300]], 350),
-        ([[2, 700]], 350),
-        ([[2, 300]], 350),
-        ([[2, 700]], 350),
-        ([[2, 500]], 350),
+        ([[5, 250], [4, 250], [3, 500], [2, 500], [6, 250]], 1500),
+        ([[2, 300], [6, 350]], 350),
+        ([[2, 700], [6, 450]], 350),
+        ([[2, 300], [6, 550]], 350),
+        ([[2, 700], [6, 650]], 350),
+        ([[2, 500], [6, 750]], 350),
         (HOME_POSITIONS, 1500),
     ],
     'demo_bow': [
-        ([[5, 700], [4, 600], [3, 600]], 1500),
-        ([[5, 700]], 800),
-        (HOME_POSITIONS, 1500),
+        ([[5, 450], [4, 850], [3, 250], [6, 600]], 1500),
+        ([[5, 450]], 800),
+        ([[5, 500], [4, 500], [3, 500], [6, 400]], 1500),
+        (HOME_POSITIONS, 600),
     ],
     'demo_stretch': [
-        ([[5, 150], [4, 500], [3, 500], [2, 500]], 1800),
-        ([[3, 350]], 800),
-        ([[3, 650]], 800),
-        ([[3, 500]], 400),
+        ([[5, 763], [4, 763], [3, 700], [2, 500]], 1800),
+        ([[2, 650], [1, 100]], 800),
+        ([[2, 350], [1, 650]], 800),
+        ([[2, 650], [1, 100]], 800),
+        ([[2, 350], [1, 650]], 800),
+        ([[2, 500], [1, 500]], 400),
         (HOME_POSITIONS, 1800),
     ],
     'demo_scan': [
-        ([[5, 350], [4, 400], [3, 500]], 1200),
-        ([[6, 100]], 1500),
-        ([[6, 900]], 2500),
-        ([[6, 500]], 1200),
+        ([[5, 390], [4, 650], [3, 500]], 1200),
+        ([[3, 385]], 800),
+        ([[6, 25]], 1500),
+        ([[6, 975]], 3000),
+        ([[6, 500]], 1500),
         (HOME_POSITIONS, 1200),
     ],
     'demo_shake_no': [
@@ -119,13 +123,12 @@ DEMO_SEQUENCES = {
     ],
     'demo_pickup': [
         ([[1, 100]], 600),
-        ([[5, 750], [4, 650], [3, 550], [6, 500]], 1800),
+        ([[5, 337], [4, 767], [3, 443], [6, 500]], 1800),
         ([[1, 650]], 700),
-        ([[5, 300], [4, 400]], 1500),
-        ([[6, 200]], 1500),
-        ([[5, 750], [4, 650]], 1500),
-        ([[1, 100]], 600),
-        ([[5, 300], [4, 400]], 1200),
+        ([[5, 420], [4, 600]], 1000),
+        ([[6, 250]], 1200),
+        ([[5, 337], [4, 767], [3, 443]], 1500),
+        ([[1, 100]], 500),
         (HOME_POSITIONS, 1500),
     ],
 }
@@ -385,13 +388,19 @@ def _send_iotconnect_telemetry(payload: dict):
         return
 
     if iotc_publisher is None or not iotc_publisher.is_connected():
-        if not iotc_warning_flags['not_connected']:
-            print('Warning: IoTConnect client not connected.')
-            iotc_warning_flags['not_connected'] = True
-        return
+        for _ in range(5):
+            time.sleep(0.2)
+            if iotc_publisher is not None and iotc_publisher.is_connected():
+                break
+        else:
+            if not iotc_warning_flags['not_connected']:
+                print('Warning: IoTConnect client not connected.')
+                iotc_warning_flags['not_connected'] = True
+            return
 
     try:
         iotc_publisher.send_telemetry(payload)
+        iotc_warning_flags['not_connected'] = False
     except Exception as e:
         print(f'IoTConnect telemetry publish error: {e}')
 
@@ -505,13 +514,13 @@ def execute_arm_action(arm, action_name, command_args=None):
     elif action_name == 'close_gripper':
         arm.setPosition(1, clamp_position(arm.getPosition(1) + 100), duration=1000, wait=True)
     elif action_name == 'advance':
-        arm.setPosition(5, clamp_position(arm.getPosition(5) + 100), duration=1500, wait=True)
-    elif action_name == 'backup':
         arm.setPosition(5, clamp_position(arm.getPosition(5) - 100), duration=1500, wait=True)
+    elif action_name == 'backup':
+        arm.setPosition(5, clamp_position(arm.getPosition(5) + 100), duration=1500, wait=True)
     elif action_name == 'left':
-        arm.setPosition(6, clamp_position(arm.getPosition(6) - 100), duration=1500, wait=True)
-    elif action_name == 'right':
         arm.setPosition(6, clamp_position(arm.getPosition(6) + 100), duration=1500, wait=True)
+    elif action_name == 'right':
+        arm.setPosition(6, clamp_position(arm.getPosition(6) - 100), duration=1500, wait=True)
     elif action_name == 'up':
         arm.setPosition(4, clamp_position(arm.getPosition(4) - 100), duration=1500, wait=True)
     elif action_name == 'down':
@@ -521,9 +530,9 @@ def execute_arm_action(arm, action_name, command_args=None):
     elif action_name == 'wrist_roll_ccw':
         arm.setPosition(2, clamp_position(arm.getPosition(2) - 100), duration=1000, wait=True)
     elif action_name == 'wrist_flex_up':
-        arm.setPosition(3, clamp_position(arm.getPosition(3) - 100), duration=1000, wait=True)
-    elif action_name == 'wrist_flex_down':
         arm.setPosition(3, clamp_position(arm.getPosition(3) + 100), duration=1000, wait=True)
+    elif action_name == 'wrist_flex_down':
+        arm.setPosition(3, clamp_position(arm.getPosition(3) - 100), duration=1000, wait=True)
     elif action_name in DEMO_SEQUENCES:
         for positions, duration_ms in DEMO_SEQUENCES[action_name]:
             arm.setPosition(positions, duration=duration_ms, wait=True)
@@ -696,6 +705,8 @@ def main():
         run_mode(arm, mode, camera_index=args.camera,
                  headless=args.headless, perf_every=args.perf_every)
 
+    except KeyboardInterrupt:
+        pass
     except Exception as e:
         print(f"Error: {e}")
         print("Make sure XArm 1S is connected via USB and powered on.")
