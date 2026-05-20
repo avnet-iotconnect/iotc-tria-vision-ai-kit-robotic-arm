@@ -28,9 +28,13 @@ import xarm
 
 OUT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ball_color.json")
 PATCH_RADIUS = 3      # 7x7 sample patch around each click
-HUE_PAD = 8           # extra hue tolerance on each side
+HUE_PAD = 15          # extra hue tolerance on each side
 SAT_PAD = 25
-VAL_PAD = 25
+VAL_PAD = 30
+# For near-achromatic colors (white, grey) the hue channel is unreliable/noisy at low
+# saturation — hue is well-defined only when S > ~30. When the average sampled
+# saturation is below this threshold the hue range is opened to 0-180 automatically.
+ACHROMATIC_SAT_THRESHOLD = 60
 
 ALL_SERVO_IDS = [1, 2, 3, 4, 5, 6]  # gripper, wrist_roll, wrist_flex, elbow_flex, shoulder_lift, shoulder_pan
 
@@ -47,7 +51,9 @@ def on_mouse(event, x, y, flags, param):
     patch = hsv_frame[y0:y1, x0:x1].reshape(-1, 3)
     med = np.median(patch, axis=0).astype(int)
     samples.append(tuple(med.tolist()))
-    print(f"click @({x},{y}) -> H={med[0]} S={med[1]} V={med[2]}  (samples: {len(samples)})")
+    arr = np.array(samples)
+    note = "  [low-sat: hue→full range]" if float(arr[:, 1].mean()) < ACHROMATIC_SAT_THRESHOLD else ""
+    print(f"click @({x},{y}) -> H={med[0]} S={med[1]} V={med[2]}  (samples: {len(samples)}){note}")
 
 
 def current_range():
@@ -55,7 +61,12 @@ def current_range():
     if not samples:
         return None
     arr = np.array(samples)
-    h_lo, h_hi = arr[:, 0].min() - HUE_PAD, arr[:, 0].max() + HUE_PAD
+    avg_s = float(arr[:, 1].mean())
+    if avg_s < ACHROMATIC_SAT_THRESHOLD:
+        # Near-white/grey: hue is noise at low saturation — use full hue range.
+        h_lo, h_hi = 0, 180
+    else:
+        h_lo, h_hi = arr[:, 0].min() - HUE_PAD, arr[:, 0].max() + HUE_PAD
     s_lo, s_hi = arr[:, 1].min() - SAT_PAD, arr[:, 1].max() + SAT_PAD
     v_lo, v_hi = arr[:, 2].min() - VAL_PAD, arr[:, 2].max() + VAL_PAD
     lower = np.array([max(0, h_lo), max(0, s_lo), max(0, v_lo)], dtype=np.uint8)
@@ -126,6 +137,8 @@ def main():
     cv2.setMouseCallback(win, on_mouse)
 
     print("Click the ball in the live view. 's' save, 'r' reset, 'h' hold pose (torque on), 'w' release torque, 'q'/ESC quit.")
+    print("TIP for white/grey balls: hue is automatically set to full range when avg saturation < 60.")
+    print("     Click 5-10 spots across the ball surface including any slightly shadowed areas.")
     while True:
         ok, frame = cap.read()
         if not ok:

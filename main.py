@@ -80,32 +80,50 @@ HOME_POSITIONS = [[1, 500], [2, 500], [3, 500], [4, 500], [5, 500], [6, 500]]
 # Every sequence must end at HOME_POSITIONS so the next action starts from a known pose.
 DEMO_SEQUENCES = {
     'demo_wave': [
-        ([[5, 250], [4, 250], [3, 500], [2, 500]], 1500),
-        ([[2, 300]], 350),
-        ([[2, 700]], 350),
-        ([[2, 300]], 350),
-        ([[2, 700]], 350),
-        ([[2, 500]], 350),
+        ([[5, 250], [4, 250], [3, 500], [2, 500], [6, 250]], 1500),
+        ([[2, 300], [6, 350]], 350),
+        ([[2, 700], [6, 450]], 350),
+        ([[2, 300], [6, 550]], 350),
+        ([[2, 700], [6, 650]], 350),
+        ([[2, 500], [6, 750]], 350),
         (HOME_POSITIONS, 1500),
     ],
     'demo_bow': [
-        ([[5, 700], [4, 600], [3, 600]], 1500),
-        ([[5, 700]], 800),
-        (HOME_POSITIONS, 1500),
+        ([[5, 450], [4, 850], [3, 250], [6, 600]], 1500),
+        ([[5, 450]], 800),
+        ([[5, 500], [4, 500], [3, 500], [6, 400]], 1500),
+        (HOME_POSITIONS, 600),
     ],
     'demo_stretch': [
-        ([[5, 150], [4, 500], [3, 500], [2, 500]], 1800),
-        ([[3, 350]], 800),
-        ([[3, 650]], 800),
-        ([[3, 500]], 400),
+        ([[5, 763], [4, 763], [3, 700], [2, 500]], 1800),
+        ([[2, 650], [1, 100]], 800),
+        ([[2, 350], [1, 650]], 800),
+        ([[2, 650], [1, 100]], 800),
+        ([[2, 350], [1, 650]], 800),
+        ([[2, 500], [1, 500]], 400),
         (HOME_POSITIONS, 1800),
     ],
     'demo_scan': [
-        ([[5, 350], [4, 400], [3, 500]], 1200),
-        ([[6, 100]], 1500),
-        ([[6, 900]], 2500),
-        ([[6, 500]], 1200),
-        (HOME_POSITIONS, 1200),
+        # Move to scan start: camera aimed at near edge of table, base at left strip
+        ([[5, 476], [4, 612], [3, 428], [6, 350]], 1500),
+        # Line 1 (near→far)
+        ([[5, 326], [4, 802], [3, 338]], 5000),
+        ([[6, 410]], 1800),
+        # Line 2 (far→near)
+        ([[5, 476], [4, 612], [3, 428]], 5000),
+        ([[6, 470]], 1800),
+        # Line 3 (near→far)
+        ([[5, 326], [4, 802], [3, 338]], 5000),
+        ([[6, 530]], 1800),
+        # Line 4 (far→near)
+        ([[5, 476], [4, 612], [3, 428]], 5000),
+        ([[6, 590]], 1800),
+        # Line 5 (near→far)
+        ([[5, 326], [4, 802], [3, 338]], 5000),
+        ([[6, 650]], 1800),
+        # Line 6 (far→near)
+        ([[5, 476], [4, 612], [3, 428]], 5000),
+        (HOME_POSITIONS, 1500),
     ],
     'demo_shake_no': [
         ([[5, 300], [4, 350]], 1200),
@@ -119,13 +137,12 @@ DEMO_SEQUENCES = {
     ],
     'demo_pickup': [
         ([[1, 100]], 600),
-        ([[5, 750], [4, 650], [3, 550], [6, 500]], 1800),
+        ([[5, 337], [4, 767], [3, 443], [6, 500]], 1800),
         ([[1, 650]], 700),
-        ([[5, 300], [4, 400]], 1500),
-        ([[6, 200]], 1500),
-        ([[5, 750], [4, 650]], 1500),
-        ([[1, 100]], 600),
-        ([[5, 300], [4, 400]], 1200),
+        ([[5, 420], [4, 600]], 1000),
+        ([[6, 250]], 1200),
+        ([[5, 337], [4, 767], [3, 443]], 1500),
+        ([[1, 100]], 500),
         (HOME_POSITIONS, 1500),
     ],
 }
@@ -385,13 +402,19 @@ def _send_iotconnect_telemetry(payload: dict):
         return
 
     if iotc_publisher is None or not iotc_publisher.is_connected():
-        if not iotc_warning_flags['not_connected']:
-            print('Warning: IoTConnect client not connected.')
-            iotc_warning_flags['not_connected'] = True
-        return
+        for _ in range(5):
+            time.sleep(0.2)
+            if iotc_publisher is not None and iotc_publisher.is_connected():
+                break
+        else:
+            if not iotc_warning_flags['not_connected']:
+                print('Warning: IoTConnect client not connected.')
+                iotc_warning_flags['not_connected'] = True
+            return
 
     try:
         iotc_publisher.send_telemetry(payload)
+        iotc_warning_flags['not_connected'] = False
     except Exception as e:
         print(f'IoTConnect telemetry publish error: {e}')
 
@@ -505,13 +528,13 @@ def execute_arm_action(arm, action_name, command_args=None):
     elif action_name == 'close_gripper':
         arm.setPosition(1, clamp_position(arm.getPosition(1) + 100), duration=1000, wait=True)
     elif action_name == 'advance':
-        arm.setPosition(5, clamp_position(arm.getPosition(5) + 100), duration=1500, wait=True)
-    elif action_name == 'backup':
         arm.setPosition(5, clamp_position(arm.getPosition(5) - 100), duration=1500, wait=True)
+    elif action_name == 'backup':
+        arm.setPosition(5, clamp_position(arm.getPosition(5) + 100), duration=1500, wait=True)
     elif action_name == 'left':
-        arm.setPosition(6, clamp_position(arm.getPosition(6) - 100), duration=1500, wait=True)
-    elif action_name == 'right':
         arm.setPosition(6, clamp_position(arm.getPosition(6) + 100), duration=1500, wait=True)
+    elif action_name == 'right':
+        arm.setPosition(6, clamp_position(arm.getPosition(6) - 100), duration=1500, wait=True)
     elif action_name == 'up':
         arm.setPosition(4, clamp_position(arm.getPosition(4) - 100), duration=1500, wait=True)
     elif action_name == 'down':
@@ -521,9 +544,9 @@ def execute_arm_action(arm, action_name, command_args=None):
     elif action_name == 'wrist_roll_ccw':
         arm.setPosition(2, clamp_position(arm.getPosition(2) - 100), duration=1000, wait=True)
     elif action_name == 'wrist_flex_up':
-        arm.setPosition(3, clamp_position(arm.getPosition(3) - 100), duration=1000, wait=True)
-    elif action_name == 'wrist_flex_down':
         arm.setPosition(3, clamp_position(arm.getPosition(3) + 100), duration=1000, wait=True)
+    elif action_name == 'wrist_flex_down':
+        arm.setPosition(3, clamp_position(arm.getPosition(3) - 100), duration=1000, wait=True)
     elif action_name in DEMO_SEQUENCES:
         for positions, duration_ms in DEMO_SEQUENCES[action_name]:
             arm.setPosition(positions, duration=duration_ms, wait=True)
@@ -577,6 +600,29 @@ class _FreshCamera:
         self.cap.release()
 
 
+def _webrtc_push_loop(cam, stop_event):
+    """Push camera frames to the WebRTC queue at ~15 fps on a dedicated thread.
+
+    Decoupled from the main loop so blocking arm moves (wait=True) during
+    tracking and grabbing can't stall the stream.
+    """
+    interval = 1.0 / 15.0
+    while not stop_event.is_set():
+        t0 = time.perf_counter()
+        if _stream_active:
+            frame = cam.read()
+            if frame is not None:
+                try:
+                    yuv = cv2.cvtColor(frame, cv2.COLOR_BGR2YUV_I420)
+                    _webrtc_frame_queue.put_nowait(yuv)
+                except queue.Full:
+                    pass
+        elapsed = time.perf_counter() - t0
+        remaining = interval - elapsed
+        if remaining > 0:
+            time.sleep(remaining)
+
+
 def run_mode(arm, mode, camera_index=2, frame_w=640, frame_h=480,
              window_title="IOTCONNECT XArm Control", headless=False, perf_every=30):
     """Generic camera loop. Each frame: capture -> mode.process_frame -> display -> IoTConnect cmd pump.
@@ -587,6 +633,11 @@ def run_mode(arm, mode, camera_index=2, frame_w=640, frame_h=480,
         print("[ERROR] Camera failed to open!")
         return
     print(f"[INFO] Camera input: {camera_index} ({frame_w}, {frame_h}) — mode={mode.name} headless={headless}")
+
+    _webrtc_push_stop = threading.Event()
+    if _webrtc_enabled:
+        threading.Thread(target=_webrtc_push_loop, args=(cam, _webrtc_push_stop),
+                         daemon=True, name="webrtc-push").start()
 
     _current_mode = mode
     mode.setup(arm)
@@ -619,15 +670,6 @@ def run_mode(arm, mode, camera_index=2, frame_w=640, frame_h=480,
             if display is None:
                 display = frame
 
-            if _webrtc_enabled and _stream_active:
-                try:
-                    yuv = cv2.cvtColor(frame, cv2.COLOR_BGR2YUV_I420)
-                    _webrtc_frame_queue.put_nowait(yuv)
-                except queue.Full:
-                    pass
-                except Exception:
-                    pass
-
             if not headless:
                 cv2.imshow(window_title, display)
                 key = cv2.waitKey(1)
@@ -651,6 +693,7 @@ def run_mode(arm, mode, camera_index=2, frame_w=640, frame_h=480,
                 t_cap_sum = t_proc_sum = t_total_sum = 0.0
                 t_window_start = time.time()
     finally:
+        _webrtc_push_stop.set()
         mode.teardown(arm)
         cam.release()
         if not headless:
@@ -687,15 +730,17 @@ def main():
         else:
             print("IoTConnect is unavailable; running without cloud connectivity.")
 
-        print("Initializing to home position...")
-        arm.setPosition(HOME_POSITIONS, duration=2000, wait=True)
-        print("Home position reached!")
-
         mode = make_mode(args.mode)
+        if not getattr(mode, 'skip_global_home', False):
+            print("Initializing to home position...")
+            arm.setPosition(HOME_POSITIONS, duration=2000, wait=True)
+            print("Home position reached!")
         print(f"Starting vision mode: {mode.name}")
         run_mode(arm, mode, camera_index=args.camera,
                  headless=args.headless, perf_every=args.perf_every)
 
+    except KeyboardInterrupt:
+        pass
     except Exception as e:
         print(f"Error: {e}")
         print("Make sure XArm 1S is connected via USB and powered on.")
