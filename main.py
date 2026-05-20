@@ -104,12 +104,26 @@ DEMO_SEQUENCES = {
         (HOME_POSITIONS, 1800),
     ],
     'demo_scan': [
-        ([[5, 390], [4, 650], [3, 500]], 1200),
-        ([[3, 385]], 800),
-        ([[6, 25]], 1500),
-        ([[6, 975]], 3000),
-        ([[6, 500]], 1500),
-        (HOME_POSITIONS, 1200),
+        # Move to scan start: camera aimed at near edge of table, base at left strip
+        ([[5, 476], [4, 612], [3, 428], [6, 350]], 1500),
+        # Line 1 (near→far)
+        ([[5, 326], [4, 802], [3, 338]], 5000),
+        ([[6, 410]], 1800),
+        # Line 2 (far→near)
+        ([[5, 476], [4, 612], [3, 428]], 5000),
+        ([[6, 470]], 1800),
+        # Line 3 (near→far)
+        ([[5, 326], [4, 802], [3, 338]], 5000),
+        ([[6, 530]], 1800),
+        # Line 4 (far→near)
+        ([[5, 476], [4, 612], [3, 428]], 5000),
+        ([[6, 590]], 1800),
+        # Line 5 (near→far)
+        ([[5, 326], [4, 802], [3, 338]], 5000),
+        ([[6, 650]], 1800),
+        # Line 6 (far→near)
+        ([[5, 476], [4, 612], [3, 428]], 5000),
+        (HOME_POSITIONS, 1500),
     ],
     'demo_shake_no': [
         ([[5, 300], [4, 350]], 1200),
@@ -586,6 +600,29 @@ class _FreshCamera:
         self.cap.release()
 
 
+def _webrtc_push_loop(cam, stop_event):
+    """Push camera frames to the WebRTC queue at ~15 fps on a dedicated thread.
+
+    Decoupled from the main loop so blocking arm moves (wait=True) during
+    tracking and grabbing can't stall the stream.
+    """
+    interval = 1.0 / 15.0
+    while not stop_event.is_set():
+        t0 = time.perf_counter()
+        if _stream_active:
+            frame = cam.read()
+            if frame is not None:
+                try:
+                    yuv = cv2.cvtColor(frame, cv2.COLOR_BGR2YUV_I420)
+                    _webrtc_frame_queue.put_nowait(yuv)
+                except queue.Full:
+                    pass
+        elapsed = time.perf_counter() - t0
+        remaining = interval - elapsed
+        if remaining > 0:
+            time.sleep(remaining)
+
+
 def run_mode(arm, mode, camera_index=2, frame_w=640, frame_h=480,
              window_title="IOTCONNECT XArm Control", headless=False, perf_every=30):
     """Generic camera loop. Each frame: capture -> mode.process_frame -> display -> IoTConnect cmd pump.
@@ -596,6 +633,11 @@ def run_mode(arm, mode, camera_index=2, frame_w=640, frame_h=480,
         print("[ERROR] Camera failed to open!")
         return
     print(f"[INFO] Camera input: {camera_index} ({frame_w}, {frame_h}) — mode={mode.name} headless={headless}")
+
+    _webrtc_push_stop = threading.Event()
+    if _webrtc_enabled:
+        threading.Thread(target=_webrtc_push_loop, args=(cam, _webrtc_push_stop),
+                         daemon=True, name="webrtc-push").start()
 
     _current_mode = mode
     mode.setup(arm)
@@ -628,15 +670,6 @@ def run_mode(arm, mode, camera_index=2, frame_w=640, frame_h=480,
             if display is None:
                 display = frame
 
-            if _webrtc_enabled and _stream_active:
-                try:
-                    yuv = cv2.cvtColor(frame, cv2.COLOR_BGR2YUV_I420)
-                    _webrtc_frame_queue.put_nowait(yuv)
-                except queue.Full:
-                    pass
-                except Exception:
-                    pass
-
             if not headless:
                 cv2.imshow(window_title, display)
                 key = cv2.waitKey(1)
@@ -660,6 +693,7 @@ def run_mode(arm, mode, camera_index=2, frame_w=640, frame_h=480,
                 t_cap_sum = t_proc_sum = t_total_sum = 0.0
                 t_window_start = time.time()
     finally:
+        _webrtc_push_stop.set()
         mode.teardown(arm)
         cam.release()
         if not headless:
@@ -696,11 +730,11 @@ def main():
         else:
             print("IoTConnect is unavailable; running without cloud connectivity.")
 
-        print("Initializing to home position...")
-        arm.setPosition(HOME_POSITIONS, duration=2000, wait=True)
-        print("Home position reached!")
-
         mode = make_mode(args.mode)
+        if not getattr(mode, 'skip_global_home', False):
+            print("Initializing to home position...")
+            arm.setPosition(HOME_POSITIONS, duration=2000, wait=True)
+            print("Home position reached!")
         print(f"Starting vision mode: {mode.name}")
         run_mode(arm, mode, camera_index=args.camera,
                  headless=args.headless, perf_every=args.perf_every)
