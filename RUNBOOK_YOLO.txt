@@ -1,0 +1,333 @@
+================================================================================
+  DEMO 3 OF 3:  YOLO + DEPTH PICK-AND-PLACE (NPU)  --  OPERATOR RUNBOOK
+================================================================================
+
+The HSV pick-and-place demo, but with two neural networks running concurrently
+on the Tria 6490's Hexagon NPU via the QNN TFLite delegate:
+
+  - Custom YOLOv8n trained on this ball replaces the HSV color filter
+    (robust to lighting, partial occlusion, similar-color backgrounds).
+  - MiDaS-V2 monocular depth replaces the pixel-radius distance proxy.
+    Grab fires on actual relative distance, independent of ball size or
+    camera focus.
+
+Combined NPU load: ~7 ms YOLO + ~5 ms depth per frame. Live perf streams to
+IOTCONNECT (yolo_ms, depth_ms, npu_fps).
+
+Board login:  root / oelinux123
+Project dir:  /var/roothome/iotc-tria-vision-ai-kit-robotic-arm/
+
+
+================================================================================
+  1. PRE-FLIGHT
+================================================================================
+
+  ifconfig eth1                                 # current board IP (DHCP)
+  v4l2-ctl --list-devices                       # find the Brio 100 node pair
+  v4l2-ctl --device=/dev/videoN --list-ctrls    # the node listing saturation
+                                                # and exposure controls IS the
+                                                # capture node
+  lsusb | grep 0483:5750                        # confirm xArm enumerated
+
+Note N for /dev/videoN. The Brio's index can shift after a USB reset. DO NOT
+assume --camera 2. Use whichever lower-numbered node has full controls.
+
+
+================================================================================
+  2. RE-TEACH WHAT IS LOCATION-SPECIFIC
+================================================================================
+
+Same ball + same arm + new room = a few things need re-teaching. MiDaS
+depth values, HSV thresholds for the drop box, and arm-relative scene
+geometry are all site-dependent.
+
+  grab_depth.json    REQUIRED at every new site (MiDaS values are
+                     scene-specific).
+                     Command:
+                         ./teach_grab.sh --model model/ball_best.tflite \
+                                         --camera N --web-port 8080
+
+  drop_pose.json     Only if the drop target moved relative to the arm.
+                     Hand-pose the arm + use the existing teach workflow.
+
+  scan_poses.json    Only if the ball staging area moved relative to the arm.
+                     Command:  python3 teach_pose.py
+
+  box_color.json     Only if the drop box changed or lighting changed a lot.
+                     The YOLO demo still uses HSV for the box (pickplace mode
+                     reuses the classical box-detection state machine).
+                     Command:
+                         python3 ball_calibrate.py --output box_color.json \
+                                                   --camera N
+
+  camera_settings.json  Only if lighting is very different.
+                        Re-run the existing exposure / WB lock script.
+
+
+RE-TEACHING D_grab  (the most important step at every new site)
+
+  1. Stop any running demo:
+         pkill -f yolo_pickplace.py
+
+  2. Run the teach helper:
+         ./teach_grab.sh --model model/ball_best.tflite --camera N \
+                         --web-port 8080
+
+  3. Open http://<board-ip>:8080/ in a browser to see the wrist-cam.
+
+  4. HOLD THE ARM BY HAND, press Enter -> torque releases. The arm will
+     fall under gravity if you let go.
+
+  5. Hand-pose the gripper exactly where you want it at the grab moment.
+     The ball should sit just below the gripper jaws and be fully visible
+     to the camera.
+
+  6. WHILE STILL HOLDING THE ARM, press 's' + Enter. Captures 20 frames
+     and saves the median D as grab_depth.json. (The script refuses to
+     save if you press 'h' first -- a locked-arm capture has zero stdev
+     and is useless.)
+
+  7. 'h' + Enter to lock the pose, then 'q' + Enter to quit cleanly.
+
+  Sanity check:  cat grab_depth.json
+  D_stdev should be roughly 10-30, NOT 0. If it's 0, redo the snapshot
+  before pressing 'h'.
+
+
+================================================================================
+  3. RUN THE DEMO
+================================================================================
+
+Two ways to launch the same demo:
+
+  (a) Unified launcher  --  opinionated defaults, simplest:
+
+  ./start.sh --mode yolo-pickplace --web-port 8080 2>&1 | tee /tmp/yolo.log
+  ./start.sh --mode yolo-ball --web-port 8080      # ball-follow only
+
+  Watch in any browser at  http://<board-ip>:8080/  -- over SSH the demo
+  auto-detects there's no DISPLAY and runs headless automatically.
+
+  Defaults applied automatically:
+    model       model/ball_best.tflite  (or /etc/models/yolox_quantized.tflite
+                                         if you haven't trained a custom one)
+    conf        0.7 for custom model, 0.25 for stock YOLO-X
+    depth       enabled if /etc/models/midas_quantized.tflite is present
+    depth gate  armed if grab_depth.json is present (else legacy radius gate)
+
+  (b) Full CLI control  --  pick your own model / conf / camera / depth:
+
+  ./start_yolo.sh --model model/ball_best.tflite --depth --conf 0.7 \
+                  --camera N --headless --web-port 8080 \
+                  2>&1 | tee /tmp/yolo.log
+
+Open http://<board-ip>:8080/ to watch the live annotated stream.
+
+Startup log should confirm:
+
+  [yolo] model=ball_best.tflite format=yolov8 nc=1 in=640x640 float32
+         NPU=YES (Hexagon HTP via QNN)
+  [depth] model=midas_quantized.tflite in=256x256 uint8
+          NPU=YES (Hexagon HTP via QNN)
+  [yolo-ball] depth gate ARMED: D_grab=... +/-...
+              (descent + grab keyed on depth, not pixel-radius)
+  [yolo-pickplace] entering BALL_PHASE...
+
+Live overlay during a pick:
+
+  r=152 dx=+4 dy=-122                              <- YOLO bbox + pan/tilt err
+  center=OK  settle 2/3  (D >= 829, target 860)    <- gate state
+  D=860 (raw 884)  higher=closer                   <- smoothed and raw D
+  NPU: yolo=7.2ms  depth=4.8ms  14 fps             <- live inference perf
+
+The grab fires when center=OK AND settle reaches 3/3 (DEPTH_SETTLE_FRAMES
+consecutive in-window frames). Closer-than-taught counts as still-OK -- the
+gate is a floor, not a window.
+
+
+================================================================================
+  4. CONTROL-LOOP TUNING KNOBS  (top of modes/yolo_pickplace.py)
+================================================================================
+
+PAN_COOLDOWN_MS           (default 250)
+  Minimum gap between shoulder_pan corrections. Pan can't issue commands
+  smaller than ~18 servo units without stalling on static friction, so each
+  pan is a relatively big motion. Without a cooldown the loop retargets at
+  frame rate before the servo finishes moving and the ball oscillates across
+  the deadband. Lower -> faster tracking; higher -> more stable settling.
+
+CENTERED_LATCH_FRAMES     (default 0)
+  Latch centered_ok for N frames after first becoming true so the grab can
+  fire on a frame where pan has just bounced out of the deadband. Found in
+  live testing that latch >= 4 fires too early. Keep at 0 unless you find a
+  specific reason to relax the simultaneity requirement.
+
+DEPTH_SETTLE_FRAMES       (default 3)
+  Consecutive in-window depth_ok frames required before firing the grab.
+  At ~12-15 Hz this is ~200 ms of sustained in-window depth.
+
+D_EWMA_ALPHA              (default 0.25)
+  Smoothing factor for the EWMA over MiDaS depth. Higher -> more
+  responsive, less smoothing. Lower -> heavier smoothing, more latency.
+  0.25 = roughly a 4-frame effective average, drops effective stdev ~2x.
+
+DEPTH_TOL_FLOOR           (default 20)
+DEPTH_TOL_MULT            (default 1.5)
+  Effective gate tolerance = max(FLOOR, MULT * D_stdev_from_teach).
+  Protects against pathologically tight teach captures.
+
+
+================================================================================
+  5. TELEMETRY TO IOTCONNECT
+================================================================================
+
+Every ballTrack telemetry payload (sent every ~2 s) carries, in addition to
+the legacy HSV-mode fields:
+
+  yolo_ms                  live YOLO inference time on the Hexagon HTP
+  depth_ms                 live MiDaS inference time on the Hexagon HTP
+  npu_fps                  effective end-to-end frame rate
+  depth_at_ball            raw D at the ball (single frame)
+  depth_at_ball_smoothed   EWMA-smoothed D (what the control law uses)
+  depth_settle             consecutive in-window depth_ok frames (0..3)
+  D_grab                   currently-loaded teach value
+  D_tolerance              effective gate width
+
+sysInfo_gpu (Adreno GPU busy %) will stay near zero. The workload is on the
+Hexagon NPU, NOT the Adreno graphics GPU. NPU activity is visible through
+yolo_ms and depth_ms.
+
+
+================================================================================
+  6. DIAGNOSTICS
+================================================================================
+
+Camera works? Detection right?  (camera must be free -- stop demo first)
+  python3 yolo_selftest.py --model model/ball_best.tflite \
+                           --camera N --conf 0.5 2>/dev/null
+
+Demo running -- what does inference see right now?
+  python3 yolo_diag_stream.py
+  python3 depth_diag_stream.py
+  (both pull frames from the MJPEG stream -- no camera contention)
+
+Depth looks jumpy -- is it MiDaS noise or YOLO bbox jitter?
+  python3 depth_monitor.py --frames 30
+  (variance decomposition: fixed_center / fixed_ball / dyn_ball)
+
+Stuck process won't quit?
+  pkill -9 -f yolo_pickplace.py
+  pkill -9 -f teach_grab_depth.py
+
+
+================================================================================
+  7. TROUBLESHOOTING
+================================================================================
+
+* "could not load grab_depth.json" or no "depth gate ARMED" log line
+    -> Re-run teach_grab.sh. Confirm the file exists and has D_stdev > 0.
+
+* Grab fires too early (gripper closes above the ball)
+    -> D_grab is taught too low for your actual grab pose. Re-teach with the
+       gripper closer to the ball.
+    -> Or raise DEPTH_SETTLE_FRAMES so transient in-window crossings don't
+       trigger.
+
+* Grab never fires
+    -> Watch the overlay. If depth=NO persistently, D is below the threshold
+       -- descent isn't reaching the taught grab distance. Check for arm
+       saturation at LIFT_MAX or ELBOW_MAX (visible in [APPROACH-BLOCKED]
+       log line).
+    -> If settle counter never reaches 3, D is bouncing in/out of the
+       window. Lower DEPTH_SETTLE_FRAMES or widen the teach tolerance.
+
+* Pan oscillates many times before grab
+    -> Increase PAN_COOLDOWN_MS (try 350) or accept it as the cost of bus-
+       servo static friction. Read the analysis at the top of
+       modes/yolo_pickplace.py for why the floor can't be lowered.
+
+* Camera not opening (--camera 2 fails)
+    -> The Brio's index has shifted. Re-run v4l2-ctl --list-devices and use
+       the new --camera N.
+
+* YOLO detects false positives on bright wall corners
+    -> Raise --conf 0.7 -> 0.8 or higher. Real ball detections at this
+       site routinely score > 0.9; corner FPs sit around 0.5-0.65.
+
+* Demo runs but no NPU acceleration (latency >> 7 ms)
+    -> Look at the startup log for "NPU=YES (Hexagon HTP via QNN)". If it
+       shows "NPU=no (CPU TFLite)", the QNN delegate failed to load -- check
+       ADSP_LIBRARY_PATH is set (start_yolo.sh sets it).
+
+* QNN delegate prints a lot of stderr at startup
+    -> Most of it is silenced internally via fd-level redirect. To see the
+       startup spam for debugging: YOLO_VERBOSE=1 ./start_yolo.sh ...
+       To hide remaining stragglers: pipe through 2>/dev/null or | tee.
+
+
+================================================================================
+  8. GOTCHAS WORTH KNOWING
+================================================================================
+
+* Camera index can drift after USB reset.
+  Always re-check with v4l2-ctl --list-devices after any reconnect.
+  Has been seen as both /dev/video2 and /dev/video3 across boots.
+
+* MiDaS-V2 INT8 has ~20-unit per-frame noise on a static scene.
+  The control loop EWMA-smooths before gating. Don't try to read absolute
+  depth -- only treat values as relative to your taught D_grab.
+
+* Re-teach D_grab at every new site.
+  Same physical grab pose reads 100+ units different across lighting and
+  camera enumerations.
+
+* Don't run git on the board.
+  The on-device git index is out of sync with the working tree. Push files
+  via SFTP from a dev box.
+
+
+================================================================================
+  9. SWITCHING TO ANOTHER DEMO
+================================================================================
+
+  pkill -f yolo_pickplace.py            # if launched via ./start_yolo.sh
+  pkill -f main.py                      # if launched via ./start.sh --mode ...
+  ./start.sh --mode asl                 # gesture control       (RUNBOOK_ASL.txt)
+  ./start.sh --mode pickplace           # classical CV          (RUNBOOK_HSV.txt)
+  ./start.sh --mode yolo-pickplace      # back to this demo (unified launcher)
+
+Or, from IOTCONNECT (no restart needed):
+  set_mode mode=yolo-pickplace
+  set_mode mode=yolo-ball
+
+
+================================================================================
+  10. FILES THIS DEMO USES
+================================================================================
+
+  detectors/yolo_detector.py        Custom YOLOv8n on Hexagon NPU (QNN)
+  detectors/depth_detector.py       MiDaS-V2 on Hexagon NPU (QNN)
+  modes/yolo_pickplace.py           Depth-gated YOLO ball-follow + pickplace
+  yolo_pickplace.py                 Standalone entry point
+  teach_grab_depth.py               D_grab capture helper
+  yolo_selftest.py                  Camera-free detector self-test
+  yolo_diag_stream.py               Live diagnostic via MJPEG stream
+  depth_diag_stream.py              Live depth diagnostic via MJPEG stream
+  depth_monitor.py                  Depth variance decomposition
+  model/ball_best.tflite            INT8 TFLite trained custom YOLOv8n
+  /etc/models/midas_quantized.tflite  Bundled Qualcomm AI Hub MiDaS-V2
+  grab_depth.json                   Per-site D_grab teach output (gitignored)
+  start_yolo.sh                     Conda-activating launcher with ADSP env
+  teach_grab.sh                     Conda-activating launcher for teach_grab
+
+
+================================================================================
+  11. DEEPER DOCUMENTATION
+================================================================================
+
+  CUSTOM_NPU_DETECTOR.md   Full end-to-end procedure for retraining the
+                           YOLO model from scratch: capture, label, Colab
+                           training, INT8 TFLite export, NPU deployment.
+
+  README.md                Project overview, hardware list, IOTCONNECT
+                           setup, demo menu.

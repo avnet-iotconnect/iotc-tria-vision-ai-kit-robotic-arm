@@ -1,0 +1,304 @@
+================================================================================
+  DEMO 2 OF 3:  HSV PICK-AND-PLACE  --  OPERATOR RUNBOOK
+================================================================================
+
+Fully autonomous pick-and-drop using classical CV only: HSV color thresholding,
+contour analysis, and a proportional visual-servo controller. The wrist-mounted
+camera segments by color (one HSV range for the ball, another for the drop box),
+the arm centers, advances, and grabs based on apparent pixel radius. CPU only,
+no NPU involvement, no machine learning. Streams state + ballTrack telemetry
+to IOTCONNECT.
+
+Two flavors:
+  ball       just ball-follow + grab + return-to-home (no drop phase)
+  pickplace  find the drop box, then ball-follow + grab + drop in the box
+
+Board login:  root / oelinux123
+Project dir:  /var/roothome/iotc-tria-vision-ai-kit-robotic-arm/
+
+
+================================================================================
+  1. PRE-FLIGHT
+================================================================================
+
+  lsusb | grep 0483:5750         # xArm enumerated?
+  v4l2-ctl --list-devices        # wrist camera enumerated?
+  ifconfig eth1                  # board IP for IOTCONNECT and web view
+
+If v4l2-ctl reports the Brio at a different /dev/videoN than the default 2,
+pass --camera N to ball_calibrate.py, teach_pose.py, AND main.py. They must
+all agree.
+
+
+================================================================================
+  2. ONE-TIME CALIBRATION (per site / per ball / per lighting)
+================================================================================
+
+THREE pieces of calibration data. Capture them in order; each step writes a
+JSON file the next may depend on. The calibration scripts release all six
+servo torques so you can free-pose the entire arm to aim the wrist camera --
+ALWAYS SUPPORT THE ARM BEFORE PRESSING ENTER, especially on a wall- or
+ceiling-mounted arm.
+
+  2a. Ball HSV thresholds  --  ball_calibrate.py
+  -------------------------------------------------
+    ./calibrate.sh
+      or:  python3 ball_calibrate.py [--camera N]
+
+    1. Hold the arm, Enter -> torque drops.
+    2. Click the ball in the live preview. Each click samples a 7x7 HSV patch
+       and widens the mask range. Overlay shows what the detector will see.
+    3. h = re-engage torque at current pose; w = release again to re-aim.
+    4. s = save -> writes ball_color.json
+       r = reset samples
+       q / ESC = quit without saving
+
+  2b. Scan poses  --  teach_pose.py
+  -------------------------------------------------
+    ./teach.sh
+      or:  python3 teach_pose.py
+
+    Captures the arm poses cycled through while the camera sweeps for the ball.
+
+    1. Hold the arm, Enter -> torque drops.
+    2. Pose the camera at one of: center / left-edge / right-edge.
+    3. s = snapshot. The script prints a SCAN_POSE = [...] block to paste
+       into modes/ball_follow.py.
+    4. h = re-enable torque (do this before letting go!).
+    5. Repeat for each pose; q to quit.
+
+  2c. Drop box HSV thresholds (pickplace only)  --  ball_calibrate.py
+  -------------------------------------------------
+    python3 ball_calibrate.py --output box_color.json [--camera N]
+
+    Same UI as ball-color calibration, but write to box_color.json. Click on
+    the drop box in the live preview. The pickplace mode reads box_color.json
+    to find and approach the drop target.
+
+  2d. Camera-gripper offset (OPTIONAL)  --  calibrate_cam_offset.py
+  -------------------------------------------------
+    Skip unless the gripper consistently closes NEXT TO the ball rather than
+    on it.
+
+    ./calibrate_offset.sh
+      or:  python3 calibrate_cam_offset.py [--camera N]
+
+    1. Hold the arm, Enter -> torque drops. Pose the gripper directly over the
+       ball at the height it would normally grab from.
+    2. OSD shows live (bx, by) and resulting offset.
+    3. s = snapshot. Averages last ~30 frames and prints
+       CAM_GRIPPER_OFFSET_X / _Y to paste into modes/ball_follow.py.
+    4. h = re-enable torque, q = quit (re-engages torque first).
+
+
+================================================================================
+  3. RUN THE DEMO
+================================================================================
+
+Ball-follow only (no drop phase):
+  ./start.sh --mode ball
+  python3 main.py --mode ball --headless --web-port 8080      # over SSH
+
+Pick-and-place (find box, grab ball, drop in box):
+  ./start.sh --mode pickplace
+  python3 main.py --mode pickplace --headless --web-port 8080
+
+Watch the live stream at http://<board-ip>:8080/ if running --web-port.
+
+The arm homes, then enters SCANNING. Drop the ball anywhere in the scan
+envelope. The arm centers on it, descends until apparent radius matches the
+"grab distance" target, closes the gripper, and either returns home (ball
+mode) or carries the ball to the taught box position and releases (pickplace
+mode). Open the gripper manually or via the IOTCONNECT open_gripper command
+to re-arm the cycle.
+
+
+================================================================================
+  4. STATE MACHINE
+================================================================================
+
+  IDLE      -> SCANNING                                   (immediately at launch)
+  SCANNING  -> TRACKING                                   (ball detected)
+  TRACKING  -> TRACKING (centering pan/tilt and descent)
+            -> GRABBING                                   (centered AND radius OK)
+            -> SCANNING                                   (ball lost > grace)
+  GRABBING  -> HOLDING                                    (gripper closed)
+  HOLDING   -> IDLE                                       (gripper opened by user
+                                                           or via IOTCONNECT)
+
+A NO_BALL_GRACE_FRAMES window (~5 s at 6 fps) lets the arm hold its current
+pose during brief detection drop-outs from clipping or HSV flicker, instead
+of bouncing back to a scan move every time the ball flickers off for a frame.
+
+
+================================================================================
+  5. KEY TUNING CONSTANTS  (top of modes/ball_follow.py)
+================================================================================
+
+PAN_GAIN, TILT_GAIN
+  Servo units commanded per pixel of error. TILT_GAIN is higher because
+  wrist_flex fights gravity at extended poses.
+
+PAN_DIR, TILT_DIR, TILT_ELBOW_DIR
+  Sign flips. Determined by live test -- flip from +1 to -1 if the arm
+  moves AWAY from the ball instead of toward it.
+
+MIN_TRIM_STEP             (default  8)
+MIN_TRIM_STEP_PAN         (default 18)
+  Floors on non-zero P-controller commands. Hiwonder bus servos silently
+  ignore commands below ~5 units (static friction). The pan floor is higher
+  because shoulder_pan carries the whole forearm + wrist + camera, so its
+  static friction is ~2x the wrist's.
+
+APPROACH_STEP             (default 15)
+  Per-frame shoulder_lift step during descent. Below ~12 the lift servo
+  can't break friction at extended poses (shoulder_lift > 600) and the
+  descent silently stalls.
+
+MAX_STEP                  (default 25)
+  Hard cap on any single-frame servo delta.
+
+MOVE_DURATION_MS          (default 220)
+  How long each per-frame move takes. Too short and small commands get
+  ignored; too long and the loop rate drops.
+
+CENTER_DEADBAND_PX        (default 60)
+  Pixel error inside which centering trims stop. Must be
+    >= MIN_TRIM_STEP_PAN * pixels-per-servo-unit (~7 px/unit)
+  or a single floored pan command will fling the ball clear past the deadband
+  and the controller will oscillate.
+
+APPROACH_DEADBAND_PX
+  Looser threshold -- once inside this, the arm is allowed to descend toward
+  the ball while still fine-centering.
+
+TARGET_RADIUS_PX, RADIUS_TOLERANCE
+  Apparent ball radius (in pixels) that means "close enough to grab". Tune
+  for YOUR ball and grab height. Watch the OSD's reported radius at the
+  moment you'd want the grab to fire and set TARGET_RADIUS_PX to that value.
+
+CAM_GRIPPER_OFFSET_X / _Y
+  Optional pixel offset between the camera optical axis and the gripper
+  jaws. Default 0/0 is correct for the reference build. Only set after
+  running calibrate_cam_offset.py if you change the mount.
+
+LIFT_MAX, ELBOW_MAX
+  Hard safety ceilings during approach so a never-satisfied radius check
+  can't drive the gripper into the table.
+
+NO_BALL_GRACE_FRAMES
+  How many consecutive lost-ball frames before falling back to SCANNING.
+  Increase if the ball flickers in and out at the frame edge.
+
+SCAN_POSES
+  Poses cycled through while searching. Captured with teach_pose.py.
+
+PAN_GAIN, TILT_GAIN, APPROACH_STEP, MAX_STEP all scale implicitly with the
+camera/loop frame rate. If you change camera resolution or drop the preview,
+expect to re-tune.
+
+
+================================================================================
+  6. TELEMETRY TO IOTCONNECT
+================================================================================
+
+Each frame's payload (sent every TELEMETRY_INTERVAL_S, default ~2 s) carries:
+
+  Top level:
+    state              IDLE / SCANNING / TRACKING / PREDICTING / GRABBING /
+                       HOLDING (mirrors the state machine)
+
+  ballTrack block:
+    ball_x, ball_y, ball_r       last detected pixel position + radius
+                                 (0 if not seen)
+    pan_err, tilt_err            current centering error in pixels
+    radius_err                   apparent-radius error from TARGET_RADIUS_PX
+    velocity_x, velocity_y       recent ball motion (px/frame)
+    d_pan, d_tilt, d_lift,
+    d_elbow                      last commanded servo deltas
+    is_prediction                1 if current bbox is extrapolated, not detected
+    no_ball_frames               consecutive frames without a detection
+    pred_frames_left             extrapolation budget remaining
+
+If state or ballTrack.* doesn't appear on the IOTCONNECT dashboard, verify
+the fields are declared on the device template -- the broker drops
+undeclared attributes silently.
+
+
+================================================================================
+  7. TROUBLESHOOTING
+================================================================================
+
+* Gripper closes on empty space next to the ball
+    -> Camera is far enough off-axis from the gripper that aiming at the
+       geometric image center is no longer good enough. Run
+       calibrate_cam_offset.py and paste CAM_GRIPPER_OFFSET_X/_Y into
+       modes/ball_follow.py.
+
+* Arm finds the ball but just sits there shaking
+    -> Classic bus-servo static-friction stall. P-controller commanding
+       deltas below ~5 units that the motor physically ignores. Make sure
+       MIN_TRIM_STEP >= 8 and MIN_TRIM_STEP_PAN >= 18. Don't fix by lowering
+       CENTER_DEADBAND_PX -- that just moves the dead-spot inward.
+
+* Arm centers but never descends toward the ball
+    -> Same friction floor on the lift axis. Raise APPROACH_STEP. At
+       extended poses (shoulder_lift > 600) the lift servo needs >=12-unit
+       commands to actually move.
+
+* Arm bounces between TRACKING and SCAN every time the ball flickers
+    -> Detector losing the ball briefly (frame-edge clipping, tight HSV
+       margins). Raise NO_BALL_GRACE_FRAMES, or re-run ball_calibrate.py
+       under the actual lighting.
+
+* Arm drives AWAY from the ball instead of toward it
+    -> A direction sign is wrong. Flip PAN_DIR, TILT_DIR, or TILT_ELBOW_DIR
+       in modes/ball_follow.py (whichever axis is wrong). Mount-dependent --
+       changing the arm mount can flip them.
+
+* Gripper closes too early (before reaching the ball)
+    -> TARGET_RADIUS_PX is too low. Watch the OSD's reported radius at the
+       moment you'd want the grab to fire and set TARGET_RADIUS_PX to that.
+
+* ball_color.json not found
+    -> Run ball_calibrate.py first. Both ball-follow and the offset
+       calibrator depend on it.
+
+* Pickplace mode can't find the box
+    -> Run ball_calibrate.py --output box_color.json with the box in view.
+
+* Stuck process won't quit
+    -> pkill -9 -f main.py
+
+
+================================================================================
+  8. SWITCHING TO ANOTHER DEMO
+================================================================================
+
+  pkill -f main.py
+  ./start.sh --mode asl                 # gesture control      (RUNBOOK_ASL.txt)
+  ./start.sh --mode yolo-pickplace      # YOLO + depth on NPU  (RUNBOOK_YOLO.txt)
+  ./start.sh --mode yolo-ball           # YOLO ball-follow only
+
+Or use ./start_yolo.sh --model ... --depth ... if you need to override the
+YOLO model path, confidence, or depth flag from the command line.
+
+You can also send a mode-switch IOTCONNECT command without restarting,
+e.g.  set_mode mode=yolo-pickplace.
+
+
+================================================================================
+  9. FILES THIS DEMO USES
+================================================================================
+
+  modes/ball_follow.py        Ball-follow mode (--mode ball)
+  modes/pickplace.py          Pick-and-place mode (--mode pickplace)
+  ball_calibrate.py           HSV calibrator (ball + box)
+  teach_pose.py               Scan-pose teacher
+  calibrate_cam_offset.py     Optional cam-gripper offset calibrator
+  ball_color.json             Per-site ball HSV (gitignored)
+  box_color.json              Per-site box HSV (gitignored)
+  scan_poses.json             Per-site scan poses (gitignored)
+  cam_gripper_offset.json     Optional offset overrides (gitignored)
+  main.py                     Top-level runtime
+  start.sh                    Conda-activating launcher

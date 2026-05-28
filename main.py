@@ -200,7 +200,7 @@ def has_pending_action():
 # Vision modes the supervisor knows how to start. Used both by the new
 # parameterized `set_mode` command (mode=ball|pickplace|asl) and by the
 # legacy per-mode commands kept below for backward compatibility.
-VISION_MODE_NAMES = {'ball', 'pickplace', 'asl'}
+VISION_MODE_NAMES = {'ball', 'pickplace', 'asl', 'yolo-ball', 'yolo-pickplace'}
 # Strings that mean "stop the running mode but stay cloud-connected" when
 # passed as the `mode` argument to set_mode. Matches both `stop_demo` and
 # `set_mode mode=idle` on the cloud side.
@@ -217,6 +217,8 @@ MODE_SWITCH_COMMANDS = {
     'set_mode_ball': 'ball',
     'set_mode_pickplace': 'pickplace',
     'set_mode_asl': 'asl',
+    'set_mode_yolo_ball': 'yolo-ball',
+    'set_mode_yolo_pickplace': 'yolo-pickplace',
 }
 CALIBRATOR_COMMAND_NAMES = {'calibrate_ball', 'calibrate_box', 'calibrate_offset'}
 
@@ -1034,6 +1036,13 @@ def run_mode(arm, mode, camera_index=2, frame_w=640, frame_h=480,
     MJPEG on that port — point a browser at http://<board-ip>:<web_port>/
     to watch the live demo from anywhere on the LAN."""
     global _current_mode
+    # No DISPLAY / WAYLAND_DISPLAY = no graphical session (typical over SSH).
+    # cv2.imshow would crash the Qt platform plugin and abort the demo. Force
+    # headless and remind the user to add --web-port so they can still watch.
+    if not headless and not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+        print("[INFO] no DISPLAY/WAYLAND_DISPLAY env — forcing headless mode. "
+              "Add --web-port 8080 to stream the live view in a browser.")
+        headless = True
     cam = _FreshCamera(camera_index, frame_w, frame_h)
     if not cam.start():
         print("[ERROR] Camera failed to open!")

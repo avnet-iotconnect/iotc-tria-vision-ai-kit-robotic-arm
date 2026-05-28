@@ -1,0 +1,134 @@
+================================================================================
+  DEMO 1 OF 3:  ASL GESTURE CONTROL  --  OPERATOR RUNBOOK
+================================================================================
+
+Operator stands in front of a USB camera and signs single-handed ASL letters;
+the xArm responds in real time. Hand tracking uses MediaPipe Hands; gesture
+classification uses PointNet over the 21 hand landmarks. Runs on CPU (no NPU
+involvement). Streams every recognized gesture + arm state to IOTCONNECT.
+
+Board login:  root / oelinux123
+Project dir:  /var/roothome/iotc-tria-vision-ai-kit-robotic-arm/
+
+
+================================================================================
+  1. PRE-FLIGHT
+================================================================================
+
+  lsusb | grep 0483:5750         # xArm enumerated?
+  v4l2-ctl --list-devices        # operator camera enumerated?
+  ifconfig eth1                  # board IP for IOTCONNECT and the web view
+
+For ASL the camera is operator-facing (not the wrist mount). Any USB UVC
+camera works. Default --camera 2; if v4l2-ctl shows a different index, pass
+--camera N.
+
+
+================================================================================
+  2. RUN THE DEMO
+================================================================================
+
+  ./start.sh --mode asl
+      OR
+  python3 main.py --mode asl --headless --web-port 8080    # over SSH
+
+The arm homes, then waits for a gesture. The on-screen overlay shows the
+detected letter + confidence + which hand (left = arm-movement, right =
+gripper).
+
+
+================================================================================
+  3. GESTURE MAPPING
+================================================================================
+
+  LEFT HAND  -- arm movement
+  ----------------------------
+    A  Advance       (move forward)
+    B  Back up       (move backward)
+    L  Left          (move left)
+    R  Right         (move right)
+    U  Up            (raise)
+    Y  Down          (lower)
+    H  Home          (return to center)
+
+  RIGHT HAND -- gripper
+  ----------------------------
+    A  Close gripper
+    B  Open gripper
+
+Hold a gesture steady for about half a second to fire the command (debounces
+finger transitions). Each fired gesture publishes a telemetry record to
+IOTCONNECT with the letter, confidence score, and the resulting arm action.
+
+
+================================================================================
+  4. IOTCONNECT REMOTE COMMANDS (work alongside gestures)
+================================================================================
+
+  home               Return to center
+  open_gripper       Open
+  close_gripper      Close
+  advance / backup   Move forward / backward
+  left / right       Move laterally
+  up / down          Move vertically
+
+Cloud commands and live gestures both queue into the same arm-action pump.
+Commands are acknowledged back to IOTCONNECT with execution status.
+
+
+================================================================================
+  5. TROUBLESHOOTING
+================================================================================
+
+* No hand detected
+    - Check lighting. MediaPipe Hands needs reasonable contrast between
+      hand and background.
+    - Verify the camera is the one facing the operator, not a wrist mount.
+
+* Gestures recognized but arm doesn't move
+    - lsusb | grep 0483:5750  -- the xArm must be powered on AND plugged in
+      AFTER power-on (power alone doesn't enumerate it).
+    - Check the SCAN_POSES / HOME_POSE constants in modes/asl.py if the arm
+      goes to the wrong "home" position.
+
+* Arm moves the wrong direction
+    - Direction signs in modes/asl.py / modes/ball_follow.py are
+      mount-dependent. Flip PAN_DIR or TILT_DIR if the arm consistently
+      drives away from the intended direction.
+
+* IOTCONNECT not receiving telemetry
+    - Confirm device-cert.pem, device-pkey.pem, iotcDeviceConfig.json all
+      sit in the project root.
+    - ping 8.8.8.8 to confirm internet.
+
+* Stuck process won't quit
+    - pkill -9 -f main.py
+
+
+================================================================================
+  6. SWITCHING TO ANOTHER DEMO
+================================================================================
+
+This demo is the default (--mode asl). To switch:
+
+  pkill -f main.py
+  ./start.sh --mode pickplace          # HSV pick-and-place      (RUNBOOK_HSV.txt)
+  ./start.sh --mode yolo-pickplace     # YOLO + depth on NPU     (RUNBOOK_YOLO.txt)
+  ./start.sh --mode yolo-ball          # YOLO ball-follow only
+
+Or use ./start_yolo.sh --model ... --depth ... if you need to override the
+YOLO model path, confidence, or depth flag from the command line.
+
+You can also send a mode-switch IOTCONNECT command without restarting the
+process, e.g.  set_mode mode=yolo-pickplace.
+
+
+================================================================================
+  7. FILES THIS DEMO USES
+================================================================================
+
+  modes/asl.py                ASL mode implementation
+  point_net.py                PointNet classifier definition
+  model/point_net_1.pth       Trained classifier weights
+  main.py                     Top-level runtime (camera + IOTCONNECT pump)
+  start.sh                    Conda-activating launcher

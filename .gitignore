@@ -48,3 +48,14 @@ teach_pose.json
 tmp/
 icons/
 model/point_net_1.pth
+model/yolov8n.onnx
+model/*.onnx
+yolov8n.pt
+
+# Custom ball-model training data + artifacts (large, regenerable)
+dataset/
+runs/
+*.tflite
+*.zip
+best.pt
+best.onnx
