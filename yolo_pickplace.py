@@ -89,6 +89,14 @@ def main():
 
     mode = build_mode(args.mode, detector, depth_detector=depth_detector)
 
+    # No DISPLAY/WAYLAND_DISPLAY = no graphical session (typical over SSH).
+    # cv2.imshow would crash the Qt platform plugin and abort the demo, so
+    # force headless and remind the user to use --web-port to watch remotely.
+    if not args.headless and not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+        print("[yolo] no DISPLAY/WAYLAND_DISPLAY env — forcing headless. "
+              "Use --web-port 8080 to stream the live view to a browser.")
+        args.headless = True
+
     cam = app._FreshCamera(args.camera, 640, 480)
     if not cam.start():
         raise SystemExit(f"[yolo] camera index {args.camera} failed to open")

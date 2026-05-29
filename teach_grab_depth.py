@@ -58,7 +58,15 @@ def release_torque(arm):
 def parse_args():
     ap = argparse.ArgumentParser(description="Teach D_grab for depth-gated grab")
     ap.add_argument("--camera", type=int, default=2)
-    ap.add_argument("--model", default="/etc/models/yolox_quantized.tflite",
+    # Default model auto-detects: custom-trained model/ball_best.tflite if it
+    # exists, else fall back to the stock YOLO-X. Mirrors make_mode in
+    # modes/__init__.py so the cloud-triggered teach uses whatever the live
+    # demo would use.
+    _here = os.path.dirname(os.path.abspath(__file__))
+    _custom = os.path.join(_here, "model", "ball_best.tflite")
+    ap.add_argument("--model",
+                    default=_custom if os.path.exists(_custom)
+                    else "/etc/models/yolox_quantized.tflite",
                     help="YOLO model used to find the ball during teach")
     ap.add_argument("--conf", type=float, default=None,
                     help="confidence threshold (auto: 0.25 yolox, 0.7 custom)")
@@ -69,6 +77,10 @@ def parse_args():
                     help="frames to median over for the D_grab snapshot")
     ap.add_argument("--web-port", type=int, default=0,
                     help="serve a live preview on this port (0=off)")
+    ap.add_argument("--web-driven", action="store_true",
+                    help="drive actions from the browser UI buttons instead of stdin. "
+                         "Used by the IOTCONNECT calibrate target=grab_depth cloud command — "
+                         "no stdin loop, all actions trigger from /action endpoints.")
     return ap.parse_args()
 
 
@@ -164,111 +176,154 @@ def main():
     t = threading.Thread(target=loop, daemon=True)
     t.start()
 
-    print("\n" + "=" * 60)
-    print(" SAFETY: this will RELEASE the servos so you can hand-pose the arm.")
-    print(" Support the arm BEFORE pressing Enter, or it will swing under")
-    print(" gravity and could damage the mount / itself.")
-    print("=" * 60)
-    input("[teach-grab] Holding the arm? Press Enter to release torque... ")
+    torque_on = [True]   # list so closures can mutate
 
-    try:
-        release_torque(arm)
-        print("[teach-grab] torque OFF — hand-pose the arm so the ball is under")
-        print("             the gripper and visible to the wrist camera.")
-    except Exception as e:
-        print(f"[teach-grab] servoOff failed: {e}")
-        sys.exit(1)
-
-    torque_on = False
-
-    print("\n[teach-grab] commands: s=snapshot  h=hold  r=release  q=quit")
-
-    while True:
+    # Action implementations — shared between stdin loop and web-driven mode.
+    def do_release():
         try:
-            cmd = input("> ").strip().lower()
-        except EOFError:
-            break
+            release_torque(arm); torque_on[0] = False
+            return True, "torque OFF"
+        except Exception as e:
+            return False, f"release failed: {e}"
 
-        if cmd == "s":
-            print(f"[teach-grab] capturing {args.frames} frames at ~10 Hz...")
-            d_vals, r_vals = [], []
-            for _ in range(args.frames):
-                ball, D = state["last_ball"], state["last_D"]
-                if ball is not None and D is not None:
-                    d_vals.append(D); r_vals.append(ball.r)
-                time.sleep(0.1)
-            if len(d_vals) < args.frames * 0.5:
-                print(f"[teach-grab] only {len(d_vals)}/{args.frames} valid frames "
-                      "(ball not consistently detected) — reposition + retry")
-                continue
-            D_grab = statistics.median(d_vals)
-            r_grab = statistics.median(r_vals)
-            stdev_d = statistics.stdev(d_vals) if len(d_vals) > 1 else 0.0
-            if stdev_d < 0.5:
-                print("[teach-grab] WARNING: D stdev is ~0 across all 20 frames.")
-                print("             This almost always means torque was ON (arm")
-                print("             locked) when you snapshotted, so you captured")
-                print("             the SETTLED-after-hold pose, NOT your hand-pose.")
-                print("             Hand-pose the arm (torque OFF), press 's' FIRST,")
-                print("             THEN 'h'+'q'. Aborting save.")
-                continue
-            payload = {
-                "D_grab": float(D_grab),
-                "D_min": float(min(d_vals)),
-                "D_max": float(max(d_vals)),
-                "D_stdev": float(stdev_d),
-                "ball_r_at_grab": float(r_grab),
-                "n_frames": len(d_vals),
-                "model": os.path.basename(args.model),
-                "depth_model": os.path.basename(args.depth_model),
-                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            }
-            with open(OUT_FILE, "w") as f:
-                json.dump(payload, f, indent=2)
-            print(f"[teach-grab] D_grab = {D_grab:.1f}  "
-                  f"(n={len(d_vals)}, stdev={payload['D_stdev']:.1f}, "
-                  f"range {min(d_vals):.1f}..{max(d_vals):.1f})")
-            print(f"[teach-grab] ball_r_at_grab = {r_grab:.1f}")
-            print(f"[teach-grab] saved -> {OUT_FILE}")
+    def do_hold():
+        try:
+            hold_current_pose(arm); torque_on[0] = True
+            return True, "torque ON"
+        except Exception as e:
+            return False, f"hold failed: {e}"
 
-        elif cmd == "h":
-            print("[teach-grab] re-enabling torque at current pose...")
-            try:
-                hold_current_pose(arm)
-                torque_on = True
-                print("[teach-grab] torque ON")
-            except Exception as e:
-                print(f"[teach-grab] hold failed: {e}")
-
-        elif cmd == "r":
-            print("[teach-grab] releasing torque...")
-            try:
-                release_torque(arm)
-                torque_on = False
-                print("[teach-grab] torque OFF")
-            except Exception as e:
-                print(f"[teach-grab] release failed: {e}")
-
-        elif cmd in ("q", "quit", "exit"):
-            break
-
-        elif cmd == "":
+    def do_snapshot():
+        d_vals, r_vals = [], []
+        for _ in range(args.frames):
             ball, D = state["last_ball"], state["last_D"]
             if ball is not None and D is not None:
-                print(f"[teach-grab] r={ball.r:.0f} conf={ball.conf:.2f} D={D:.1f}")
-            else:
-                print("[teach-grab] no ball detected")
+                d_vals.append(D); r_vals.append(ball.r)
+            time.sleep(0.1)
+        if len(d_vals) < args.frames * 0.5:
+            return False, f"only {len(d_vals)}/{args.frames} valid frames"
+        D_grab = statistics.median(d_vals)
+        r_grab = statistics.median(r_vals)
+        stdev_d = statistics.stdev(d_vals) if len(d_vals) > 1 else 0.0
+        if stdev_d < 0.5:
+            return False, ("D stdev ~0 across all frames - torque was ON during "
+                           "snap. Release torque, hand-pose, snap again BEFORE hold.")
+        payload = {
+            "D_grab": float(D_grab),
+            "D_min": float(min(d_vals)),
+            "D_max": float(max(d_vals)),
+            "D_stdev": float(stdev_d),
+            "ball_r_at_grab": float(r_grab),
+            "n_frames": len(d_vals),
+            "model": os.path.basename(args.model),
+            "depth_model": os.path.basename(args.depth_model),
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }
+        with open(OUT_FILE, "w") as f:
+            json.dump(payload, f, indent=2)
+        return True, (f"D_grab={D_grab:.1f} (n={len(d_vals)}, "
+                      f"stdev={stdev_d:.1f}, range {min(d_vals):.1f}..{max(d_vals):.1f})")
 
-        else:
-            print(f"[teach-grab] unknown {cmd!r}; try s/h/r/q")
+    # ---------- Web-driven path (cloud-triggered) ----------
+    if args.web_driven:
+        if not args.web_port:
+            args.web_port = 8000   # match the HSV calibrator convention
+        from teach_grab_web_view import TeachGrabWebView
+        quit_evt = threading.Event()
+
+        def web_action(cmd):
+            if cmd == "release":
+                ok, msg = do_release()
+            elif cmd == "hold":
+                ok, msg = do_hold()
+            elif cmd == "snap":
+                msg = "capturing..."
+                print(f"[teach-grab] {msg}")
+                ok, msg = do_snapshot()
+            elif cmd in ("quit", "exit"):
+                msg = "quitting"; ok = True
+                quit_evt.set()
+            else:
+                msg = f"unknown command: {cmd}"; ok = False
+            print(f"[teach-grab] {'OK' if ok else 'FAIL'}: {msg}")
+            tgw.update_status(torque=torque_on[0], msg=msg)
+
+        tgw = TeachGrabWebView(args.web_port, web_action)
+        # The background `loop` already publishes to `web` (the demo WebView).
+        # Re-point it at the teach view so the operator sees the live feed
+        # with overlay AND has the action buttons.
+        if web is not None:
+            try: web.stop()
+            except Exception: pass
+        web = tgw  # noqa - the background loop publishes via `web`
+        # Inject a refresh of the published status (torque + ball + D) once a
+        # second so the page header stays accurate without a publish() override.
+        def status_pump():
+            while not quit_evt.is_set():
+                ball, D = state.get("last_ball"), state.get("last_D")
+                tgw.update_status(
+                    torque=torque_on[0],
+                    ball=(f"r={ball.r:.0f} conf={ball.conf:.2f}" if ball else ""),
+                    D=(f"{D:.1f}" if D is not None else ""))
+                time.sleep(1.0)
+        threading.Thread(target=status_pump, daemon=True).start()
+
+        print(f"[teach-grab] web-driven — open {tgw.url_hint()} and use the buttons.")
+        print("[teach-grab] Hold the arm BEFORE clicking Release Torque.")
+        quit_evt.wait()
+        try: tgw.stop()
+        except Exception: pass
+
+    else:
+        # ---------- Original interactive (stdin) path ----------
+        print("\n" + "=" * 60)
+        print(" SAFETY: this will RELEASE the servos so you can hand-pose the arm.")
+        print(" Support the arm BEFORE pressing Enter, or it will swing under")
+        print(" gravity and could damage the mount / itself.")
+        print("=" * 60)
+        input("[teach-grab] Holding the arm? Press Enter to release torque... ")
+
+        ok, msg = do_release()
+        if not ok:
+            print(f"[teach-grab] {msg}"); sys.exit(1)
+        print(f"[teach-grab] {msg} — hand-pose the arm so the ball is under "
+              "the gripper and visible to the wrist camera.")
+
+        print("\n[teach-grab] commands: s=snapshot  h=hold  r=release  q=quit")
+        while True:
+            try:
+                cmd = input("> ").strip().lower()
+            except EOFError:
+                break
+            if cmd == "s":
+                print(f"[teach-grab] capturing {args.frames} frames at ~10 Hz...")
+                ok, msg = do_snapshot()
+                print(f"[teach-grab] {'OK' if ok else 'FAIL'}: {msg}")
+                if ok:
+                    print(f"[teach-grab] saved -> {OUT_FILE}")
+            elif cmd == "h":
+                ok, msg = do_hold(); print(f"[teach-grab] {msg}")
+            elif cmd == "r":
+                ok, msg = do_release(); print(f"[teach-grab] {msg}")
+            elif cmd in ("q", "quit", "exit"):
+                break
+            elif cmd == "":
+                ball, D = state["last_ball"], state["last_D"]
+                if ball is not None and D is not None:
+                    print(f"[teach-grab] r={ball.r:.0f} conf={ball.conf:.2f} D={D:.1f}")
+                else:
+                    print("[teach-grab] no ball detected")
+            else:
+                print(f"[teach-grab] unknown {cmd!r}; try s/h/r/q")
 
     state["running"] = False
-    if not torque_on:
+    if not torque_on[0]:
         print("[teach-grab] WARNING: torque is OFF — the arm may sag. "
-              "Use 'h' BEFORE 'q' next time to lock the pose before exiting.")
+              "Use Hold/'h' BEFORE Quit/'q' next time to lock the pose first.")
     cam.release()
     if web is not None:
-        web.stop()
+        try: web.stop()
+        except Exception: pass
     print("[teach-grab] done")
 
 

@@ -47,6 +47,11 @@ def make_mode(name: str) -> Mode:
             model_path, conf = custom, 0.7
         else:
             model_path, conf = "/etc/models/yolox_quantized.tflite", 0.25
+        # main.py has no --conf/--model flags, so allow overriding the YOLO
+        # defaults via env vars when launched through ./start.sh, e.g.
+        #   YOLO_CONF=0.3 ./start.sh --mode yolo-pickplace
+        model_path = os.environ.get("YOLO_MODEL", model_path)
+        conf = float(os.environ.get("YOLO_CONF", conf))
         detector = make_ball_detector(model_name=model_path,
                                       conf_thres=conf, use_npu=True)
 

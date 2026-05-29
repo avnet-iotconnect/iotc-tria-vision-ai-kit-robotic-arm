@@ -208,7 +208,7 @@ IDLE_MODE_ALIASES = {'idle', 'none', 'stop', 'off'}
 
 # Calibration targets the supervisor knows how to spawn. Used by the new
 # parameterized `calibrate` command (target=ball|box|offset).
-CALIBRATION_TARGETS = {'ball', 'box', 'offset'}
+CALIBRATION_TARGETS = {'ball', 'box', 'offset', 'grab_depth'}
 
 # Legacy per-target command names — kept so any IoTConnect template already
 # registered with these still works. New deployments should use `set_mode`
@@ -220,7 +220,8 @@ MODE_SWITCH_COMMANDS = {
     'set_mode_yolo_ball': 'yolo-ball',
     'set_mode_yolo_pickplace': 'yolo-pickplace',
 }
-CALIBRATOR_COMMAND_NAMES = {'calibrate_ball', 'calibrate_box', 'calibrate_offset'}
+CALIBRATOR_COMMAND_NAMES = {'calibrate_ball', 'calibrate_box', 'calibrate_offset',
+                            'calibrate_grab_depth'}
 
 
 def _build_calibrator_argv(name, camera_index):
@@ -243,6 +244,15 @@ def _build_calibrator_argv(name, camera_index):
         'calibrate_offset': [
             sys.executable, os.path.join(here, 'browser_calibrate_offset.py'),
             '--no-prompt', '--camera', str(camera_index),
+        ],
+        # YOLO mode "training" analog: capture the depth-at-ball D_grab used
+        # by the depth-gated grab. The teach script runs in --web-driven mode
+        # so it serves the same kind of browser UI as the HSV calibrators
+        # (no stdin needed — operator clicks Release/Hold/Snapshot/Quit).
+        'calibrate_grab_depth': [
+            sys.executable, os.path.join(here, 'teach_grab_depth.py'),
+            '--web-driven', '--web-port', '8000',
+            '--camera', str(camera_index),
         ],
     }
     return table.get(name)

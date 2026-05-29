@@ -136,6 +136,7 @@ class YoloDetector:
         self.in_index = inp["index"]
         self.in_h, self.in_w = int(inp["shape"][1]), int(inp["shape"][2])
         self.in_dtype = inp["dtype"]
+        self.in_quant = inp["quantization"]  # (scale, zero) for int8/uint8 input
 
         # Decide which decode path to use from the output shape.
         outs = self.interp.get_output_details()
@@ -199,8 +200,22 @@ class YoloDetector:
         rgb = cv2.cvtColor(padded, cv2.COLOR_BGR2RGB)
         if self.in_dtype == np.float32:
             blob = (rgb.astype(np.float32) / 255.0)[None]
+        elif self.in_dtype == np.uint8:
+            # uint8 model (e.g. stock YOLO-X): feed raw 0-255 bytes; the
+            # model's input quant op normalizes internally.
+            blob = rgb.astype(np.uint8)[None]
         else:
-            blob = rgb.astype(self.in_dtype)[None]
+            # int8 full-integer model: quantize the normalized [0,1] image
+            # with the input tensor's (scale, zero). For ultralytics int8
+            # export this is scale=1/255, zero=-128 -> q = pixel - 128.
+            in_scale, in_zero = self.in_quant
+            real = rgb.astype(np.float32) / 255.0
+            if in_scale:
+                q = np.round(real / in_scale + in_zero)
+            else:
+                q = rgb.astype(np.float32) - 128.0
+            info = np.iinfo(self.in_dtype)
+            blob = np.clip(q, info.min, info.max).astype(self.in_dtype)[None]
 
         self.interp.set_tensor(self.in_index, blob)
         with self._silence():
@@ -236,6 +251,9 @@ class YoloDetector:
 
     def _decode_v8(self, scale, dw, dh, h0, w0):
         out = self.interp.get_tensor(self.out_v8["index"])[0]  # [4+nc, N] or [N, 4+nc]
+        # Dequantize if the output tensor is int8/uint8 (full-integer export).
+        # For float-I/O exports the scale is 0 and this is a no-op.
+        out = self._dequant(out, self.out_v8)
         if self.v8_transpose:
             out = out.T
         # out is now [N, 4+nc]: cols 0-3 = cx,cy,w,h. Ultralytics' INT8 TFLite
@@ -243,7 +261,6 @@ class YoloDetector:
         # — not pixel space — so we scale up to the model's input pixel grid
         # before the letterbox undo. cols 4..4+nc = per-class score (already
         # sigmoided in the export graph).
-        out = out.astype(np.float32, copy=False)
         boxes_xywh = out[:, :4] * float(self.in_w)
         if self.nc == 1:
             confs = out[:, 4]
