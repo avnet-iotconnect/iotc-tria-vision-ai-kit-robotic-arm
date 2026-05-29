@@ -57,7 +57,8 @@ def release_torque(arm):
 
 def parse_args():
     ap = argparse.ArgumentParser(description="Teach D_grab for depth-gated grab")
-    ap.add_argument("--camera", type=int, default=2)
+    ap.add_argument("--camera", type=int, default=None,
+                    help="OpenCV camera index. Default: auto-detect the Brio.")
     # Default model auto-detects: custom-trained model/ball_best.tflite if it
     # exists, else fall back to the stock YOLO-X. Mirrors make_mode in
     # modes/__init__.py so the cloud-triggered teach uses whatever the live
@@ -86,6 +87,10 @@ def parse_args():
 
 def main():
     args = parse_args()
+    if args.camera is None:
+        import camera_settings as cam_settings
+        args.camera = cam_settings.find_brio_index(fallback=2)
+        print(f"[teach-grab] --camera not specified -> auto-detected /dev/video{args.camera}")
     if args.conf is None:
         args.conf = 0.25 if "yolox" in os.path.basename(args.model).lower() else 0.7
 

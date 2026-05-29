@@ -45,7 +45,9 @@ def parse_args():
     p = argparse.ArgumentParser(description="YOLO (NPU) pick-and-place demo")
     p.add_argument("--mode", default="pickplace", choices=["pickplace", "ball"],
                    help="pickplace (find box, grab ball, drop) or ball (grab only)")
-    p.add_argument("--camera", type=int, default=2, help="OpenCV camera index")
+    p.add_argument("--camera", type=int, default=None,
+                   help="OpenCV camera index. Default: auto-detect the Brio "
+                        "via /sys/class/video4linux/*/name, falling back to 2.")
     p.add_argument("--model", default="/etc/models/yolox_quantized.tflite",
                    help="path to the w8a8 TFLite model (default: board's YOLO-X)")
     p.add_argument("--conf", type=float, default=None,
@@ -67,6 +69,11 @@ def parse_args():
 
 def main():
     args = parse_args()
+
+    if args.camera is None:
+        import camera_settings as cam_settings
+        args.camera = cam_settings.find_brio_index(fallback=2)
+        print(f"[yolo] --camera not specified -> auto-detected /dev/video{args.camera}")
 
     if args.conf is None:
         # Stock YOLO-X (COCO sports-ball among 80 classes) needs a low threshold

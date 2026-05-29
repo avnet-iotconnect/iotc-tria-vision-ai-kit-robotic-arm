@@ -1148,7 +1148,9 @@ def run_mode(arm, mode, camera_index=2, frame_w=640, frame_h=480,
 def parse_args():
     parser = argparse.ArgumentParser(description="IOTCONNECT XArm vision demo")
     parser.add_argument('--mode', default='asl', help="Vision mode (default: asl)")
-    parser.add_argument('--camera', type=int, default=2, help="OpenCV camera index (default: 2)")
+    parser.add_argument('--camera', type=int, default=None,
+                        help="OpenCV camera index. Default: auto-detect the Brio "
+                             "via /sys/class/video4linux/*/name, falling back to 2.")
     parser.add_argument('--headless', action='store_true', help="Disable preview window (for SSH/perf testing)")
     parser.add_argument('--perf-every', type=int, default=30, help="Print perf stats every N frames")
     parser.add_argument('--web-port', type=int, default=None,
@@ -1168,6 +1170,10 @@ def parse_args():
 
 def main():
     args = parse_args()
+    if args.camera is None:
+        detected = cam_settings.find_brio_index(fallback=2)
+        print(f"[main] --camera not specified -> auto-detected /dev/video{detected}")
+        args.camera = detected
     global _runtime_camera_index
     _runtime_camera_index = args.camera
     # Override the default camera_settings.json path so load()/save() during

@@ -134,3 +134,35 @@ def is_dirty():
 def clear_dirty():
     global _dirty
     _dirty = False
+
+
+def find_brio_index(fallback=2):
+    """Return the /dev/videoN index of the Brio's capture node.
+
+    The Brio's V4L2 enumeration drifts across USB events (we've seen it on
+    /dev/video2 and /dev/video3 in the same week), so hard-coding --camera
+    eventually breaks. The Linux kernel labels each /dev/videoN with the
+    camera's model string at ``/sys/class/video4linux/videoN/name``; the
+    Brio prints "Brio 100" (or similar) there. We pick the lowest matching
+    index — when the Brio enumerates as a pair, the lower-numbered node is
+    the capture node (full V4L2 controls); the sibling is a metadata node
+    that ignores cap.set().
+
+    Returns ``fallback`` if no Brio node is found, so behaviour on a
+    non-Brio rig (or boot without the camera plugged in) is the same as
+    before this helper existed."""
+    import glob, os
+    candidates = []
+    for path in sorted(glob.glob("/sys/class/video4linux/video*/name")):
+        try:
+            with open(path) as f:
+                name = f.read().strip().lower()
+        except OSError:
+            continue
+        if "brio" in name:
+            try:
+                idx = int(os.path.basename(os.path.dirname(path)).replace("video", ""))
+                candidates.append(idx)
+            except ValueError:
+                continue
+    return min(candidates) if candidates else fallback
