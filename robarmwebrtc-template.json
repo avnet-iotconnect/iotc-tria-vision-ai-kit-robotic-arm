@@ -58,6 +58,14 @@
             "aggregateTypes": []
         },
         {
+            "name": "state",
+            "displayName": "",
+            "type": "STRING",
+            "description": "",
+            "unit": "",
+            "aggregateTypes": []
+        },
+        {
             "name": "sysInfo_system",
             "displayName": "",
             "type": "OBJECT",
@@ -344,6 +352,7 @@
             "displayName": "",
             "type": "OBJECT",
             "description": "",
+            "attributeColor": "",
             "childs": [
                 {
                     "name": "state",
@@ -446,99 +455,8 @@
             "isOTACommand": false
         },
         {
-            "name": "demo_wave",
-            "command": "demo_wave",
-            "requiredParam": false,
-            "requiredAck": true,
-            "isOTACommand": false
-        },
-        {
-            "name": "demo_stretch",
-            "command": "demo_stretch",
-            "requiredParam": false,
-            "requiredAck": true,
-            "isOTACommand": false
-        },
-        {
-            "name": "demo_pickup",
-            "command": "demo_pickup",
-            "requiredParam": false,
-            "requiredAck": true,
-            "isOTACommand": false
-        },
-        {
-            "name": "move_up",
-            "command": "move_up",
-            "requiredParam": false,
-            "requiredAck": true,
-            "isOTACommand": false
-        },
-        {
-            "name": "move_to_home",
-            "command": "move_to_home",
-            "requiredParam": false,
-            "requiredAck": true,
-            "isOTACommand": false
-        },
-        {
-            "name": "wrist_roll_cw",
-            "command": "wrist_roll_cw",
-            "requiredParam": false,
-            "requiredAck": true,
-            "isOTACommand": false
-        },
-        {
             "name": "move_down",
             "command": "move_down",
-            "requiredParam": false,
-            "requiredAck": true,
-            "isOTACommand": false
-        },
-        {
-            "name": "demo_bow",
-            "command": "demo_bow",
-            "requiredParam": false,
-            "requiredAck": true,
-            "isOTACommand": false
-        },
-        {
-            "name": "demo_scan",
-            "command": "demo_scan",
-            "requiredParam": false,
-            "requiredAck": true,
-            "isOTACommand": false
-        },
-        {
-            "name": "wrist_roll_ccw",
-            "command": "wrist_roll_ccw",
-            "requiredParam": false,
-            "requiredAck": true,
-            "isOTACommand": false
-        },
-        {
-            "name": "move_backward",
-            "command": "move_backward",
-            "requiredParam": false,
-            "requiredAck": true,
-            "isOTACommand": false
-        },
-        {
-            "name": "move_left",
-            "command": "move_left",
-            "requiredParam": false,
-            "requiredAck": true,
-            "isOTACommand": false
-        },
-        {
-            "name": "close_gripper",
-            "command": "close_gripper",
-            "requiredParam": false,
-            "requiredAck": true,
-            "isOTACommand": false
-        },
-        {
-            "name": "move_forward",
-            "command": "move_forward",
             "requiredParam": false,
             "requiredAck": true,
             "isOTACommand": false
@@ -565,8 +483,50 @@
             "isOTACommand": false
         },
         {
-            "name": "move_right",
-            "command": "move_right",
+            "name": "move_forward",
+            "command": "move_forward",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "move_to_home",
+            "command": "move_to_home",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "demo_pickup",
+            "command": "demo_pickup",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "wrist_roll_cw",
+            "command": "wrist_roll_cw",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "move_up",
+            "command": "move_up",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "close_gripper",
+            "command": "close_gripper",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "move_left",
+            "command": "move_left",
             "requiredParam": false,
             "requiredAck": true,
             "isOTACommand": false
@@ -577,10 +537,59 @@
             "requiredParam": false,
             "requiredAck": true,
             "isOTACommand": false
+        },
+        {
+            "name": "move_backward",
+            "command": "move_backward",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "demo_stretch",
+            "command": "demo_stretch",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "demo_bow",
+            "command": "demo_bow",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "demo_scan",
+            "command": "demo_scan",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "demo_wave",
+            "command": "demo_wave",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "move_right",
+            "command": "move_right",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "wrist_roll_ccw",
+            "command": "wrist_roll_ccw",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
         }
     ],
     "messageVersion": "2.1",
-    "msgCode": "XG4EMSD",
+    "msgCode": "XG4EIE3",
     "capability": "0",
     "enableCSR": "false",
     "c2dOnDemand": 0,

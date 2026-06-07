@@ -192,7 +192,7 @@ time to start the demo:
 > creation process you will be prompted to select a **Stream
 > Resource** — choose **WebRTC**. The /IOTCONNECT backend provisions
 > a KVS WebRTC signaling channel at device creation time and this
-> choice cannot be changed afterwards. If your device was already
+> choice cannot be changed afterward. If your device was already
 > created with a different template or with the wrong stream resource,
 > you must create a new device using the `robarmwebrtc` template and
 > select WebRTC at that point. Devices created without the
@@ -495,6 +495,9 @@ Publishing cadence is ~2 s (see `TELEMETRY_INTERVAL_S` in
 appear on your /IOTCONNECT dashboard, verify the fields are declared
 on the device's template — the broker drops undeclared attributes
 silently.
+
+### /IOTCONNECT Dashboard
+
 
 ## References & Documentation
 
