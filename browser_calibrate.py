@@ -430,11 +430,9 @@ def make_handler(state, arm, camera_index, out_path, target_label):
 
 def _local_ip_hint():
     try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
-        s.close()
-        return ip
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            return s.getsockname()[0]
     except OSError:
         return "0.0.0.0"
 

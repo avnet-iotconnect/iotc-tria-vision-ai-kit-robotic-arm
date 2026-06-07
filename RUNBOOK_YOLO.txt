@@ -15,7 +15,13 @@ Combined NPU load: ~7 ms YOLO + ~5 ms depth per frame. Live perf streams to
 IOTCONNECT (yolo_ms, depth_ms, npu_fps).
 
 Board login:  root / oelinux123
-Project dir:  /var/roothome/iotc-tria-vision-ai-kit-robotic-arm/
+Project dir:  /root/iotc-tria-vision-ai-kit-robotic-arm/
+
+NOTE — TEMPLATE MIGRATION: This branch uses IoTConnect template code "robArm5"
+(robArm2_template.json). If your device was previously onboarded with the older
+"robarmRTC" template, you must re-onboard it to the new template before cloud
+commands (set_mode, calibrate, etc.) will work. Existing positional move commands
+(move_left, move_right, etc.) are unchanged and backward-compatible.
 
 
 ================================================================================

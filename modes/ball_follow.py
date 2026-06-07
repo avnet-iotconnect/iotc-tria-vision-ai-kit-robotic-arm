@@ -53,6 +53,10 @@ MIN_FILL_RATIO = 0.65      # contour_area / enclosing_circle_area; ball ≈0.85+
 # at this pixel so "centered" actually means "gripper over ball".
 CAM_GRIPPER_OFFSET_X = 0
 CAM_GRIPPER_OFFSET_Y = 0
+# Frames stuck at APPROACH-BLOCKED before giving up and reverting to scanning.
+# At ~15 fps this is ~6 seconds. Prevents permanent hang when ball is out of
+# reach or TARGET_RADIUS_PX is misconfigured for the current setup.
+APPROACH_BLOCKED_TIMEOUT_FRAMES = 90
 # --- search envelope ---
 PAN_MIN = 300              # shoulder_pan clamped to [PAN_MIN, PAN_MAX] during live tracking
 PAN_MAX = 800
@@ -175,17 +179,53 @@ class BallFollowMode(Mode):
         self._perf_detect = 0.0
         self._perf_arm = 0.0
         self._perf_every = 30
+        # Calibration-loaded overrides (set by setup(); fall back to module constants)
+        self.cam_gripper_offset_x = CAM_GRIPPER_OFFSET_X
+        self.cam_gripper_offset_y = CAM_GRIPPER_OFFSET_Y
+        self.target_radius_px = TARGET_RADIUS_PX
+        self.scan_poses = SCAN_POSES
+        self.scan_pose_labels = SCAN_POSE_LABELS
+        self._approach_blocked_frames = 0
 
     def setup(self, arm):
         if not os.path.exists(CONFIG_PATH):
             raise RuntimeError(f"ball_color.json not found at {CONFIG_PATH}; run ball_calibrate.py first")
         with open(CONFIG_PATH) as f:
             cfg = json.load(f)
-        self.lower = np.array([cfg["h_min"], cfg["s_min"], cfg["v_min"]], dtype=np.uint8)
-        self.upper = np.array([cfg["h_max"], cfg["s_max"], cfg["v_max"]], dtype=np.uint8)
+        # Validate HSV values to catch inverted or out-of-range configs silently
+        # stored by a corrupted write or manual edit.
+        h_min = max(0, min(180, int(cfg.get("h_min", 0))))
+        h_max = max(0, min(180, int(cfg.get("h_max", 180))))
+        s_min = max(0, min(255, int(cfg.get("s_min", 0))))
+        s_max = max(0, min(255, int(cfg.get("s_max", 255))))
+        v_min = max(0, min(255, int(cfg.get("v_min", 0))))
+        v_max = max(0, min(255, int(cfg.get("v_max", 255))))
+        if h_min > h_max:
+            print(f"[ball] WARNING: ball_color.json has h_min({h_min}) > h_max({h_max}) — swapping")
+            h_min, h_max = h_max, h_min
+        self.lower = np.array([h_min, s_min, v_min], dtype=np.uint8)
+        self.upper = np.array([h_max, s_max, v_max], dtype=np.uint8)
         print(f"[ball] HSV range loaded: lower={self.lower.tolist()} upper={self.upper.tolist()}")
-        print(f"[ball] moving to scan pose [{SCAN_POSE_LABELS[0]}]...")
-        arm.setPosition(SCAN_POSES[0], duration=1500, wait=True)
+
+        import scan_poses_store
+        loaded_poses, loaded_labels = scan_poses_store.load()
+        if loaded_poses:
+            self.scan_poses = loaded_poses
+            self.scan_pose_labels = loaded_labels
+            print(f"[ball] using {len(loaded_poses)} scan poses from disk: {loaded_labels}")
+
+        import cam_gripper_offset_store
+        ofs = cam_gripper_offset_store.load()
+        if ofs:
+            self.cam_gripper_offset_x = int(ofs.get('cam_gripper_offset_x', CAM_GRIPPER_OFFSET_X))
+            self.cam_gripper_offset_y = int(ofs.get('cam_gripper_offset_y', CAM_GRIPPER_OFFSET_Y))
+            self.target_radius_px = int(ofs.get('target_radius_px', TARGET_RADIUS_PX))
+            print(f"[ball] cam-gripper offset loaded: "
+                  f"x={self.cam_gripper_offset_x} y={self.cam_gripper_offset_y} "
+                  f"target_r={self.target_radius_px}")
+
+        print(f"[ball] moving to scan pose [{self.scan_pose_labels[0]}]...")
+        arm.setPosition(self.scan_poses[0], duration=1500, wait=True)
         self.scan_idx = 0
         self.last_scan_move_at = time.time()
         self.state = "IDLE"
@@ -197,8 +237,8 @@ class BallFollowMode(Mode):
         h, w = frame.shape[:2]
         # Aim at the pixel where the ball appears when the gripper is over it,
         # not the geometric image center. See CAM_GRIPPER_OFFSET_X/Y.
-        cx_target = w // 2 + CAM_GRIPPER_OFFSET_X
-        cy_target = h // 2 + CAM_GRIPPER_OFFSET_Y
+        cx_target = w // 2 + self.cam_gripper_offset_x
+        cy_target = h // 2 + self.cam_gripper_offset_y
 
         # Single batched USB read for all 6 servos, reused below.
         # If even the per-servo fallback inside _read_all_positions fails,
@@ -282,12 +322,13 @@ class BallFollowMode(Mode):
         if ball is None:
             # truly lost — nothing real, nothing to predict from
             self.no_ball_frames += 1
-            label = SCAN_POSE_LABELS[self.scan_idx]
+            label = self.scan_pose_labels[self.scan_idx]
             self._log(f"SCAN[{label}]: no ball ({self.no_ball_frames})")
             cv2.putText(annotated, f"scan {label}  no ball ({self.no_ball_frames})", (10, 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2, cv2.LINE_AA)
             self.state = "SCANNING"
             self.last_is_prediction = False
+            self._approach_blocked_frames = 0
             # After a brief grace period, cycle scan poses to search the table.
             # wait=False so the camera loop keeps reading frames during the move
             # (otherwise video freezes for SCAN_MOVE_MS each transition). We pace
@@ -297,11 +338,11 @@ class BallFollowMode(Mode):
                 now = time.time()
                 next_advance_at = self.last_scan_move_at + (SCAN_MOVE_MS / 1000.0) + SCAN_DWELL_S
                 if now >= next_advance_at:
-                    self.scan_idx = (self.scan_idx + 1) % len(SCAN_POSES)
-                    next_label = SCAN_POSE_LABELS[self.scan_idx]
+                    self.scan_idx = (self.scan_idx + 1) % len(self.scan_poses)
+                    next_label = self.scan_pose_labels[self.scan_idx]
                     print(f"[ball] scanning -> {next_label}")
                     try:
-                        arm.setPosition(SCAN_POSES[self.scan_idx], duration=SCAN_MOVE_MS, wait=False)
+                        arm.setPosition(self.scan_poses[self.scan_idx], duration=SCAN_MOVE_MS, wait=False)
                     except Exception as e:
                         print(f"[ball] scan move failed: {e}")
                     self.last_scan_move_at = time.time()
@@ -319,7 +360,7 @@ class BallFollowMode(Mode):
                         (0, 165, 255), 2, cv2.LINE_AA)
         pan_err = bx - cx_target
         tilt_err = by - cy_target
-        radius_err = TARGET_RADIUS_PX - br
+        radius_err = self.target_radius_px - br
         centered_ok = abs(pan_err) <= CENTER_DEADBAND_PX and abs(tilt_err) <= CENTER_DEADBAND_PX
         # Looser gate that just requires the ball to be roughly under the gripper:
         # used to allow descent while pan/tilt are still trimming, so we don't
@@ -330,7 +371,7 @@ class BallFollowMode(Mode):
                     f"r={int(br)} dx={pan_err:+d} dy={tilt_err:+d}",
                     (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2, cv2.LINE_AA)
         cv2.putText(annotated,
-                    f"center={'OK' if centered_ok else 'NO'}  radius={'OK' if radius_ok else 'NO'} (target={TARGET_RADIUS_PX}+/-{RADIUS_TOLERANCE})",
+                    f"center={'OK' if centered_ok else 'NO'}  radius={'OK' if radius_ok else 'NO'} (target={self.target_radius_px}+/-{RADIUS_TOLERANCE})",
                     (10, 55), cv2.FONT_HERSHEY_SIMPLEX, 0.55,
                     (0, 255, 0) if centered_ok and radius_ok else (0, 200, 255),
                     2, cv2.LINE_AA)
@@ -370,12 +411,20 @@ class BallFollowMode(Mode):
         # (looser approach_centered_ok). Pan/tilt corrections continue every
         # frame and trim the ball back toward the gripper aim point even while
         # we descend, so we don't wait forever for perfect centering.
-        if approach_centered_ok and br < TARGET_RADIUS_PX - RADIUS_TOLERANCE:
+        if approach_centered_ok and br < self.target_radius_px - RADIUS_TOLERANCE:
             # Hard ceiling: if we're already at the safety limit, stop approaching.
             # Prevents table slam when radius_ok never triggers.
             if pos[SERVO_SHOULDER_LIFT] >= LIFT_MAX or pos[SERVO_ELBOW_FLEX] >= ELBOW_MAX:
-                self._log(f"APPROACH-BLOCKED: lift={pos[SERVO_SHOULDER_LIFT]}>={LIFT_MAX} or elbow={pos[SERVO_ELBOW_FLEX]}>={ELBOW_MAX}; r={int(br)} target={TARGET_RADIUS_PX}")
+                self._approach_blocked_frames += 1
+                self._log(f"APPROACH-BLOCKED: lift={pos[SERVO_SHOULDER_LIFT]}>={LIFT_MAX} or elbow={pos[SERVO_ELBOW_FLEX]}>={ELBOW_MAX}; r={int(br)} target={self.target_radius_px} ({self._approach_blocked_frames}/{APPROACH_BLOCKED_TIMEOUT_FRAMES})")
+                if self._approach_blocked_frames >= APPROACH_BLOCKED_TIMEOUT_FRAMES:
+                    print(f"[ball] APPROACH-BLOCKED for {self._approach_blocked_frames} frames — resetting to scan")
+                    self._approach_blocked_frames = 0
+                    self.state = "SCANNING"
+                    self.no_ball_frames = NO_BALL_GRACE_FRAMES  # trigger immediate scan advance
+                    self.last_scan_move_at = 0.0
             else:
+                self._approach_blocked_frames = 0
                 d_lift = APPROACH_STEP   # reach forward
                 # Coordinate elbow with shoulder — extends the arm rather than just
                 # tipping the whole thing from the shoulder. Ratio is empirical.
@@ -404,7 +453,10 @@ class BallFollowMode(Mode):
             targets.append([SERVO_SHOULDER_PAN, new_pan])
         if d_tilt:
             new_tilt = _clamp(pos[SERVO_WRIST_FLEX] + d_tilt)
-            targets.append([SERVO_WRIST_FLEX, new_tilt])
+            # Skip command when already at the limit — avoids sustained stall
+            # current against the physical stop if the ball stays high in frame.
+            if new_tilt != pos[SERVO_WRIST_FLEX]:
+                targets.append([SERVO_WRIST_FLEX, new_tilt])
         if d_lift:
             new_lift = _clamp(pos[SERVO_SHOULDER_LIFT] + d_lift, hi=LIFT_MAX)
             targets.append([SERVO_SHOULDER_LIFT, new_lift])

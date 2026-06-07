@@ -117,10 +117,9 @@ class WebView:
 
     def url_hint(self):
         try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.connect(("8.8.8.8", 80))
-            ip = s.getsockname()[0]
-            s.close()
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.connect(("8.8.8.8", 80))
+                ip = s.getsockname()[0]
         except OSError:
             ip = "0.0.0.0"
         return f"http://{ip}:{self.port}/"

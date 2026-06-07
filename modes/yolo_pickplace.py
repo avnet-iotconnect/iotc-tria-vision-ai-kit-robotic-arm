@@ -118,10 +118,34 @@ class YoloBallFollowMode(BallFollowMode):
                       "— falling back to pixel-radius gate")
 
     def setup(self, arm):
+        import scan_poses_store
+        loaded_poses, loaded_labels = scan_poses_store.load()
+        if loaded_poses:
+            self.scan_poses = loaded_poses
+            self.scan_pose_labels = loaded_labels
+            print(f"[yolo-ball] using {len(loaded_poses)} scan poses from disk: {loaded_labels}")
+        else:
+            self.scan_poses = bf.SCAN_POSES
+            self.scan_pose_labels = bf.SCAN_POSE_LABELS
+
+        import cam_gripper_offset_store
+        ofs = cam_gripper_offset_store.load()
+        if ofs:
+            self.cam_gripper_offset_x = int(ofs.get('cam_gripper_offset_x', bf.CAM_GRIPPER_OFFSET_X))
+            self.cam_gripper_offset_y = int(ofs.get('cam_gripper_offset_y', bf.CAM_GRIPPER_OFFSET_Y))
+            self.target_radius_px = int(ofs.get('target_radius_px', bf.TARGET_RADIUS_PX))
+            print(f"[yolo-ball] cam-gripper offset loaded: "
+                  f"x={self.cam_gripper_offset_x} y={self.cam_gripper_offset_y} "
+                  f"target_r={self.target_radius_px}")
+        else:
+            self.cam_gripper_offset_x = bf.CAM_GRIPPER_OFFSET_X
+            self.cam_gripper_offset_y = bf.CAM_GRIPPER_OFFSET_Y
+            self.target_radius_px = bf.TARGET_RADIUS_PX
+
         # No ball_color.json — YOLO needs no HSV calibration. Just take up the
         # first scan pose like the parent does.
-        print(f"[yolo-ball] moving to scan pose [{bf.SCAN_POSE_LABELS[0]}]...")
-        arm.setPosition(bf.SCAN_POSES[0], duration=1500, wait=True)
+        print(f"[yolo-ball] moving to scan pose [{self.scan_pose_labels[0]}]...")
+        arm.setPosition(self.scan_poses[0], duration=1500, wait=True)
         self.scan_idx = 0
         self.last_scan_move_at = time.time()
         self.state = "IDLE"
@@ -139,8 +163,8 @@ class YoloBallFollowMode(BallFollowMode):
 
         self.frame_count += 1
         h, w = frame.shape[:2]
-        cx_target = w // 2 + bf.CAM_GRIPPER_OFFSET_X
-        cy_target = h // 2 + bf.CAM_GRIPPER_OFFSET_Y
+        cx_target = w // 2 + self.cam_gripper_offset_x
+        cy_target = h // 2 + self.cam_gripper_offset_y
 
         try:
             pos = bf._read_all_positions(arm)
@@ -204,21 +228,24 @@ class YoloBallFollowMode(BallFollowMode):
 
         if ball is None:
             self.no_ball_frames += 1
-            label = bf.SCAN_POSE_LABELS[self.scan_idx]
+            self._depth_settle = 0  # reset settle counter so re-acquisition needs fresh consecutive frames
+            self.last_depth_at_ball_smoothed = None  # reset EWMA so cold-start doesn't count toward settle
+            label = self.scan_pose_labels[self.scan_idx]
             self._log(f"SCAN[{label}]: no ball ({self.no_ball_frames})")
             cv2.putText(annotated, f"scan {label}  no ball ({self.no_ball_frames})", (10, 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2, cv2.LINE_AA)
             self.state = "SCANNING"
             self.last_is_prediction = False
+            self._approach_blocked_frames = 0
             if self.no_ball_frames >= bf.NO_BALL_GRACE_FRAMES:
                 now = time.time()
                 next_advance_at = self.last_scan_move_at + (bf.SCAN_MOVE_MS / 1000.0) + bf.SCAN_DWELL_S
                 if now >= next_advance_at:
-                    self.scan_idx = (self.scan_idx + 1) % len(bf.SCAN_POSES)
-                    next_label = bf.SCAN_POSE_LABELS[self.scan_idx]
+                    self.scan_idx = (self.scan_idx + 1) % len(self.scan_poses)
+                    next_label = self.scan_pose_labels[self.scan_idx]
                     print(f"[yolo-ball] scanning -> {next_label}")
                     try:
-                        arm.setPosition(bf.SCAN_POSES[self.scan_idx], duration=bf.SCAN_MOVE_MS, wait=False)
+                        arm.setPosition(self.scan_poses[self.scan_idx], duration=bf.SCAN_MOVE_MS, wait=False)
                     except Exception as e:
                         print(f"[yolo-ball] scan move failed: {e}")
                     self.last_scan_move_at = time.time()
@@ -252,9 +279,10 @@ class YoloBallFollowMode(BallFollowMode):
                         D_EWMA_ALPHA * self.last_depth_at_ball
                         + (1 - D_EWMA_ALPHA) * self.last_depth_at_ball_smoothed)
             except Exception as e:
-                print(f"[yolo-ball] depth inference failed: {e}")
+                print(f"[yolo-ball] depth inference failed: {e} — falling back to pixel-radius gate")
                 self.last_depth_at_ball = None
                 self.last_depth_at_ball_smoothed = None
+                self._depth_settle = 0
         # NPU perf EWMAs (alpha=0.1 = ~10-frame moving average)
         a = 0.1
         self._yolo_ms_ewma = a * (t_detect * 1000.0) + (1 - a) * self._yolo_ms_ewma
@@ -269,7 +297,7 @@ class YoloBallFollowMode(BallFollowMode):
                         (0, 165, 255), 2, cv2.LINE_AA)
         pan_err = bx - cx_target
         tilt_err = by - cy_target
-        radius_err = bf.TARGET_RADIUS_PX - br
+        radius_err = self.target_radius_px - br
         centered_ok = abs(pan_err) <= bf.CENTER_DEADBAND_PX and abs(tilt_err) <= bf.CENTER_DEADBAND_PX
         approach_centered_ok = abs(pan_err) <= bf.APPROACH_DEADBAND_PX and abs(tilt_err) <= bf.APPROACH_DEADBAND_PX
         radius_ok = abs(radius_err) <= bf.RADIUS_TOLERANCE
@@ -310,7 +338,7 @@ class YoloBallFollowMode(BallFollowMode):
         # Descent: too far → keep approaching. Uses smoothed D too so we
         # don't flip-flop the descent on a noisy frame.
         too_far = (D < self.D_grab - self.D_tolerance) if use_depth \
-                  else (br < bf.TARGET_RADIUS_PX - bf.RADIUS_TOLERANCE)
+                  else (br < self.target_radius_px - bf.RADIUS_TOLERANCE)
 
         cv2.putText(annotated,
                     f"r={int(br)} dx={pan_err:+d} dy={tilt_err:+d}",
@@ -325,7 +353,7 @@ class YoloBallFollowMode(BallFollowMode):
         else:
             gate_line = (f"center={'OK' if centered_ok else 'NO'}  "
                          f"radius={'OK' if radius_ok else 'NO'} "
-                         f"(target={bf.TARGET_RADIUS_PX}+/-{bf.RADIUS_TOLERANCE})")
+                         f"(target={self.target_radius_px}+/-{bf.RADIUS_TOLERANCE})")
         cv2.putText(annotated, gate_line, (10, 55),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.55,
                     (0, 255, 0) if centered_latched and grab_gate_ok else (0, 200, 255),
@@ -385,10 +413,18 @@ class YoloBallFollowMode(BallFollowMode):
             d_elbow += int(round(d_tilt * bf.TILT_ELBOW_RATIO)) * bf.TILT_ELBOW_DIR
         if approach_centered_ok and too_far:
             if pos[bf.SERVO_SHOULDER_LIFT] >= bf.LIFT_MAX or pos[bf.SERVO_ELBOW_FLEX] >= bf.ELBOW_MAX:
+                self._approach_blocked_frames += 1
                 gate_state = (f"D={D:.0f} target={self.D_grab:.0f}" if use_depth
-                              else f"r={int(br)} target={bf.TARGET_RADIUS_PX}")
-                self._log(f"APPROACH-BLOCKED: lift={pos[bf.SERVO_SHOULDER_LIFT]}>={bf.LIFT_MAX} or elbow={pos[bf.SERVO_ELBOW_FLEX]}>={bf.ELBOW_MAX}; {gate_state}")
+                              else f"r={int(br)} target={self.target_radius_px}")
+                self._log(f"APPROACH-BLOCKED: lift={pos[bf.SERVO_SHOULDER_LIFT]}>={bf.LIFT_MAX} or elbow={pos[bf.SERVO_ELBOW_FLEX]}>={bf.ELBOW_MAX}; {gate_state} ({self._approach_blocked_frames}/{bf.APPROACH_BLOCKED_TIMEOUT_FRAMES})")
+                if self._approach_blocked_frames >= bf.APPROACH_BLOCKED_TIMEOUT_FRAMES:
+                    print(f"[yolo-ball] APPROACH-BLOCKED for {self._approach_blocked_frames} frames — resetting to scan")
+                    self._approach_blocked_frames = 0
+                    self.state = "SCANNING"
+                    self.no_ball_frames = bf.NO_BALL_GRACE_FRAMES
+                    self.last_scan_move_at = 0.0
             else:
+                self._approach_blocked_frames = 0
                 d_lift = bf.APPROACH_STEP
                 d_elbow += int(round(bf.APPROACH_STEP * bf.ELBOW_REACH_RATIO))
                 if d_tilt == 0 and tilt_err != 0:
@@ -402,7 +438,9 @@ class YoloBallFollowMode(BallFollowMode):
             targets.append([bf.SERVO_SHOULDER_PAN,
                             bf._clamp(pos[bf.SERVO_SHOULDER_PAN] + d_pan, lo=bf.PAN_MIN, hi=bf.PAN_MAX)])
         if d_tilt:
-            targets.append([bf.SERVO_WRIST_FLEX, bf._clamp(pos[bf.SERVO_WRIST_FLEX] + d_tilt)])
+            new_tilt = bf._clamp(pos[bf.SERVO_WRIST_FLEX] + d_tilt)
+            if new_tilt != pos[bf.SERVO_WRIST_FLEX]:
+                targets.append([bf.SERVO_WRIST_FLEX, new_tilt])
         if d_lift:
             targets.append([bf.SERVO_SHOULDER_LIFT, bf._clamp(pos[bf.SERVO_SHOULDER_LIFT] + d_lift, hi=bf.LIFT_MAX)])
         if d_elbow:

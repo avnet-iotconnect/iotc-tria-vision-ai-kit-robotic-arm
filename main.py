@@ -411,7 +411,11 @@ def process_iotconnect_commands(arm):
             # then dispatches.
             if command_name == 'set_mode':
                 target = _extract_arg(command_args, 'mode', 'value', 'name')
-                if target in VISION_MODE_NAMES:
+                if target is None:
+                    ack_status = C2dAck.CMD_FAILED
+                    ack_message = (f"set_mode: missing 'mode' argument. "
+                                   f"Valid: {sorted(VISION_MODE_NAMES)} or 'idle'")
+                elif target in VISION_MODE_NAMES:
                     set_pending_action(('switch_mode', target))
                     ack_message = f"Will switch to mode: {target}"
                 elif target in IDLE_MODE_ALIASES:
@@ -423,7 +427,11 @@ def process_iotconnect_commands(arm):
                                    f"Valid: {sorted(VISION_MODE_NAMES)} or 'idle'")
             elif command_name == 'calibrate':
                 target = _extract_arg(command_args, 'target', 'mode', 'value', 'name')
-                if target in CALIBRATION_TARGETS:
+                if target is None:
+                    ack_status = C2dAck.CMD_FAILED
+                    ack_message = (f"calibrate: missing 'target' argument. "
+                                   f"Valid: {sorted(CALIBRATION_TARGETS)}")
+                elif target in CALIBRATION_TARGETS:
                     argv = _build_calibrator_argv(f'calibrate_{target}', _runtime_camera_index)
                     set_pending_action(('run_subprocess', argv, f'calibrate_{target}'))
                     ack_message = f"Will start calibrator: {target}. Open http://<board-ip>:8000/ to use it."

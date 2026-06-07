@@ -42,7 +42,7 @@ needs a YOLOv8 decode path in addition to the existing YOLO-X path.
 | Tria VisionAI Kit (QCS6490 board), Brio camera, xArm wired in | Target hardware |
 | Windows dev box with Python 3.10 *and* 3.13 | labelImg likes 3.10; rest works on 3.13 |
 | `pip install paramiko` on dev box | SSH/SFTP to board |
-| Board login: `root` / `oelinux123` | Per [tria_board memory](file:///c:/Users/micha/.claude/projects/c--dev-robotic-arm/memory/tria_board.md) |
+| Board login: `root` / `oelinux123` | See RUNBOOK_YOLO.txt section 1 (Pre-flight) |
 | Google account (Drive + Colab free tier) | Train YOLOv8n on a T4 |
 | `ai_edge_litert` installed in the board's conda env | NPU inference from Python |
 

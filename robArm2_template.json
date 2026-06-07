@@ -475,6 +475,70 @@
                     "description": "Last commanded elbow_flex delta.",
                     "unit": "",
                     "attributeColor": ""
+                },
+                {
+                    "name": "yolo_ms",
+                    "displayName": "",
+                    "type": "DECIMAL",
+                    "description": "EWMA YOLO inference latency on the Hexagon NPU (yolo-ball/yolo-pickplace modes only).",
+                    "unit": "ms",
+                    "attributeColor": ""
+                },
+                {
+                    "name": "depth_ms",
+                    "displayName": "",
+                    "type": "DECIMAL",
+                    "description": "EWMA MiDaS depth inference latency on the Hexagon NPU.",
+                    "unit": "ms",
+                    "attributeColor": ""
+                },
+                {
+                    "name": "npu_fps",
+                    "displayName": "",
+                    "type": "DECIMAL",
+                    "description": "Effective end-to-end frame rate including YOLO + depth inference.",
+                    "unit": "fps",
+                    "attributeColor": ""
+                },
+                {
+                    "name": "depth_at_ball",
+                    "displayName": "",
+                    "type": "DECIMAL",
+                    "description": "Raw MiDaS inverse-depth value at the ball centre (higher = closer).",
+                    "unit": "",
+                    "attributeColor": ""
+                },
+                {
+                    "name": "depth_at_ball_smoothed",
+                    "displayName": "",
+                    "type": "DECIMAL",
+                    "description": "EWMA-smoothed depth at ball (what the grab gate uses).",
+                    "unit": "",
+                    "attributeColor": ""
+                },
+                {
+                    "name": "depth_settle",
+                    "displayName": "",
+                    "type": "INTEGER",
+                    "description": "Consecutive in-window depth_ok frames (0 to DEPTH_SETTLE_FRAMES).",
+                    "unit": "",
+                    "attributeColor": ""
+                },
+                {
+                    "name": "D_grab",
+                    "displayName": "",
+                    "type": "DECIMAL",
+                    "description": "Currently-loaded grab depth threshold from grab_depth.json.",
+                    "unit": "",
+                    "attributeColor": ""
+                },
+                {
+                    "name": "D_tolerance",
+                    "displayName": "",
+                    "type": "DECIMAL",
+                    "description": "Effective depth gate width (max of DEPTH_TOL_FLOOR and 1.5 * D_stdev).",
+                    "unit": "",
+                    "attributeColor": ""
                 }
             ],
             "aggregateTypes": []
@@ -617,6 +681,174 @@
         {
             "name": "demo_pickup",
             "command": "demo_pickup",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "set_mode",
+            "command": "set_mode",
+            "requiredParam": true,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "set_mode_ball",
+            "command": "set_mode_ball",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "set_mode_pickplace",
+            "command": "set_mode_pickplace",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "set_mode_asl",
+            "command": "set_mode_asl",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "set_mode_yolo_ball",
+            "command": "set_mode_yolo_ball",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "set_mode_yolo_pickplace",
+            "command": "set_mode_yolo_pickplace",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "calibrate",
+            "command": "calibrate",
+            "requiredParam": true,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "calibrate_ball",
+            "command": "calibrate_ball",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "calibrate_box",
+            "command": "calibrate_box",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "calibrate_offset",
+            "command": "calibrate_offset",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "calibrate_grab_depth",
+            "command": "calibrate_grab_depth",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "stop_demo",
+            "command": "stop_demo",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "stop_calibration",
+            "command": "stop_calibration",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "teach_scan_pose",
+            "command": "teach_scan_pose",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "scan_poses_show",
+            "command": "scan_poses_show",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "scan_poses_reset",
+            "command": "scan_poses_reset",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "teach_drop_pose",
+            "command": "teach_drop_pose",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "drop_pose_show",
+            "command": "drop_pose_show",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "drop_pose_reset",
+            "command": "drop_pose_reset",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "camera_setting",
+            "command": "camera_setting",
+            "requiredParam": true,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "camera_settings_show",
+            "command": "camera_settings_show",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "camera_settings_reset",
+            "command": "camera_settings_reset",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "release_torque",
+            "command": "release_torque",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "hold_pose",
+            "command": "hold_pose",
             "requiredParam": false,
             "requiredAck": true,
             "isOTACommand": false
