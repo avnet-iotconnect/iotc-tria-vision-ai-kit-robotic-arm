@@ -29,9 +29,9 @@ TILT_GAIN = 0.10           # servo units per pixel of vertical error — higher 
 # Sign of correction. +1 if "servo value goes up" corresponds to "camera view
 # moves in the +x/+y direction of the pixel frame". Flip either to -1 if the
 # arm moves AWAY from the ball. Determined by live test, not theory.
-PAN_DIR = 1               # MUST stay -1 for current wall mount; verified by user repeatedly. Do NOT flip without explicit instruction.
-TILT_DIR = -1              # was 1; flipped 2026-04-18 — logs showed wrist_flex driving UP when ball was already in top of frame (tilt_err got worse over time)
-APPROACH_STEP = 15         # shoulder_lift step toward the ball when too far. Raised from 6 on 2026-04-19 — at extended poses (shoulder_lift>600) a 6-unit command silently fails to break shoulder_lift's static friction, same friction-floor failure mode as MIN_TRIM_STEP_PAN. Lift sat at 630 for many seconds with d_lift=6 firing every frame; ball never got closer. 15 is enough to actually move the servo. Wrist co-trim during descent absorbs the larger per-step ball-shift in the frame.
+PAN_DIR = -1               # desk-mounted arm: -1 tracks correctly. Wall-mount used +1.
+TILT_DIR = 1               # desk mount: +1 tilts toward ball. Wall mount used -1.
+APPROACH_STEP = 0          # DISABLED on desk mount: increasing shoulder_lift sweeps camera PAST ball (r shrinks as lift rises = arm arcs away from ball)
 ELBOW_REACH_RATIO = 0.6    # elbow_flex contribution per unit of shoulder_lift during approach
 TILT_ELBOW_RATIO = 0.0     # disabled 2026-04-19 — telemetry showed elbow_flex draining to floor (clamp=0) because tilt's negative contribution outweighed approach's positive one over many frames; once elbow saturates the assist is wasted anyway. Wrist alone handles tilt with the wider CENTER_DEADBAND_PX
 TILT_ELBOW_DIR = 1         # flip to -1 if elbow moves wrong way for tilt
@@ -58,14 +58,14 @@ CAM_GRIPPER_OFFSET_Y = 0
 # reach or TARGET_RADIUS_PX is misconfigured for the current setup.
 APPROACH_BLOCKED_TIMEOUT_FRAMES = 90
 # --- search envelope ---
-PAN_MIN = 300              # shoulder_pan clamped to [PAN_MIN, PAN_MAX] during live tracking
+PAN_MIN = 150              # shoulder_pan clamped to [PAN_MIN, PAN_MAX]; scan right limit is pan~129-145
 PAN_MAX = 800
 # Hard safety limits so an approach that never satisfies radius_ok (bad HSV, wrong-sized ball,
 # mis-set TARGET_RADIUS_PX) can't drive the gripper into the table. Tune by teach-mode probing.
-LIFT_MAX = 800             # shoulder_lift ceiling during approach (larger = reach further down)
-ELBOW_MAX = 500            # elbow_flex ceiling during approach
+LIFT_MAX = 780             # approach ceiling; scan poses sit at 507-673, grab needs ~730+
+ELBOW_MAX = 985            # elbow_flex upper bound (scan poses reach 940-947)
 SCAN_DWELL_S = 1.5         # hold each scan pose this long before advancing
-SCAN_MOVE_MS = 2500        # duration for the move between scan poses (slowed so right-pose lift=635 doesn't plunge toward table)
+SCAN_MOVE_MS = 7500        # duration for moves between scan poses (9-pose grid covers wider area)
 NO_BALL_GRACE_FRAMES = 30  # ~5s at 6 fps — hold pose when ball briefly disappears (clipping, HSV flicker) instead of bouncing back to scan; the scan re-entry was producing the visible "shaking" between brief-track and scan-move every time detection flickered
 # --- prediction + telemetry ---
 ENABLE_PREDICTION = False        # master switch for extrapolating ball motion when it's lost
@@ -86,28 +86,46 @@ SERVO_ELBOW_FLEX = 4
 SERVO_SHOULDER_LIFT = 5    # smaller = lift up; larger = reach forward/down
 SERVO_SHOULDER_PAN = 6     # smaller = pan left; larger = pan right (verify w/ live test)
 
-# Scan poses — cycled through while no ball is seen. Captured 2026-04-18 via
-# teach_pose.py for the wall/VESA-mounted arm looking down at the table.
-# wrist_roll forced to 500 (neutral) so the wrist_flex axis produces pure
-# pitch. Off-neutral roll rotates the image, which decouples pixel dx/dy
-# from the pan/flex servos and causes tracking to oscillate.
+# Scan poses — 9-pose near/mid/far × left/center/right grid calibrated for
+# desk-mounted arm. wrist_roll at neutral (502-503) so wrist_flex produces
+# pure pitch and pixel dx/dy stay coupled to pan/flex servos.
 SCAN_POSES = [
-    # center
-    [[SERVO_SHOULDER_PAN, 499], [SERVO_SHOULDER_LIFT, 242], [SERVO_ELBOW_FLEX, 277],
-     [SERVO_WRIST_FLEX, 900], [SERVO_WRIST_ROLL, 500], [SERVO_GRIPPER, 250]],
-    # left edge
-    [[SERVO_SHOULDER_PAN, 346], [SERVO_SHOULDER_LIFT, 213], [SERVO_ELBOW_FLEX, 241],
-     [SERVO_WRIST_FLEX, 876], [SERVO_WRIST_ROLL, 494], [SERVO_GRIPPER, 258]],
-    # right edge
-    [[SERVO_SHOULDER_PAN, 736], [SERVO_SHOULDER_LIFT, 214], [SERVO_ELBOW_FLEX, 240],
-     [SERVO_WRIST_FLEX, 855], [SERVO_WRIST_ROLL, 495], [SERVO_GRIPPER, 257]],
+    # near-left
+    [[SERVO_SHOULDER_PAN, 888], [SERVO_SHOULDER_LIFT, 673], [SERVO_ELBOW_FLEX, 939], [SERVO_WRIST_FLEX, 104], [SERVO_WRIST_ROLL, 503], [SERVO_GRIPPER, 365]],
+    # near-center
+    [[SERVO_SHOULDER_PAN, 504], [SERVO_SHOULDER_LIFT, 672], [SERVO_ELBOW_FLEX, 939], [SERVO_WRIST_FLEX, 105], [SERVO_WRIST_ROLL, 502], [SERVO_GRIPPER, 365]],
+    # near-right
+    [[SERVO_SHOULDER_PAN, 129], [SERVO_SHOULDER_LIFT, 672], [SERVO_ELBOW_FLEX, 940], [SERVO_WRIST_FLEX, 104], [SERVO_WRIST_ROLL, 502], [SERVO_GRIPPER, 365]],
+    # mid-left
+    [[SERVO_SHOULDER_PAN, 894], [SERVO_SHOULDER_LIFT, 590], [SERVO_ELBOW_FLEX, 886], [SERVO_WRIST_FLEX, 150], [SERVO_WRIST_ROLL, 503], [SERVO_GRIPPER, 365]],
+    # mid-center
+    [[SERVO_SHOULDER_PAN, 507], [SERVO_SHOULDER_LIFT, 588], [SERVO_ELBOW_FLEX, 886], [SERVO_WRIST_FLEX, 150], [SERVO_WRIST_ROLL, 502], [SERVO_GRIPPER, 365]],
+    # mid-right
+    [[SERVO_SHOULDER_PAN, 137], [SERVO_SHOULDER_LIFT, 589], [SERVO_ELBOW_FLEX, 886], [SERVO_WRIST_FLEX, 150], [SERVO_WRIST_ROLL, 502], [SERVO_GRIPPER, 365]],
+    # far-left
+    [[SERVO_SHOULDER_PAN, 900], [SERVO_SHOULDER_LIFT, 507], [SERVO_ELBOW_FLEX, 833], [SERVO_WRIST_FLEX, 196], [SERVO_WRIST_ROLL, 503], [SERVO_GRIPPER, 365]],
+    # far-center
+    [[SERVO_SHOULDER_PAN, 510], [SERVO_SHOULDER_LIFT, 505], [SERVO_ELBOW_FLEX, 833], [SERVO_WRIST_FLEX, 196], [SERVO_WRIST_ROLL, 503], [SERVO_GRIPPER, 365]],
+    # far-right
+    [[SERVO_SHOULDER_PAN, 145], [SERVO_SHOULDER_LIFT, 506], [SERVO_ELBOW_FLEX, 833], [SERVO_WRIST_FLEX, 196], [SERVO_WRIST_ROLL, 503], [SERVO_GRIPPER, 365]],
 ]
-SCAN_POSE_LABELS = ["center", "left", "right"]
+SCAN_POSE_LABELS = ['near-left', 'near-center', 'near-right', 'mid-left', 'mid-center', 'mid-right', 'far-left', 'far-center', 'far-right']
 
-# TODO: replace with recaptured home pose — prior snapshot had a corrupt elbow reading.
-HOME_POSE = [[s, 500] for s in range(1, 7)]
-# Same as HOME_POSE but excludes the gripper, so a held object isn't dropped.
-HOME_POSE_KEEP_GRIP = [[s, 500] for s in range(2, 7)]
+HOME_POSE = [
+    [SERVO_SHOULDER_PAN,  500],
+    [SERVO_SHOULDER_LIFT, 750],
+    [SERVO_ELBOW_FLEX,    900],
+    [SERVO_WRIST_FLEX,    300],
+    [SERVO_WRIST_ROLL,    503],
+    [SERVO_GRIPPER,       365],
+]
+HOME_POSE_KEEP_GRIP = [
+    [SERVO_SHOULDER_PAN,  500],
+    [SERVO_SHOULDER_LIFT, 750],
+    [SERVO_ELBOW_FLEX,    900],
+    [SERVO_WRIST_FLEX,    300],
+    [SERVO_WRIST_ROLL,    503],
+]
 
 
 # Reusable Servo objects so batched getPosition doesn't allocate per frame.
