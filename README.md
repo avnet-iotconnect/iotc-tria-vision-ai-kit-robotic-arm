@@ -498,6 +498,20 @@ silently.
 
 ### /IOTCONNECT Dashboard
 
+<img src="./media/dashboard.png">
+
+To monitor and control your TRIA Vision AI Kit 6490 Robotic Arm demo with an interactive dahsboard in the /IOTCONNECT:
+
+1. Download the [provided dashboard template](robotic_arm_dashboard_export.json) from this repo.
+2. Click on "Create Dashboard" in the toolbar at the top of the screen in the online /IOTCONNECT UI.
+3. Select the "Import Dashboard" option and then browse to select your downloaded template.
+4. Choose "robarmRTC" for the Device Template and then choose your device's unique ID for the Device.
+5. Name your dashboard to your choosing.
+6. Click "Save"
+7. If desired, move or add widgets within the Dashboard Editor screen, and then click "Save" when complete.
+8. Use the control buttons in the dashboard to send commands to the arm to adjust individual servos, or send complex 
+commands (the buttons with green font labels along the bottom) to have the arm complete a series of fluid movements.
+
 
 ## References & Documentation
 

@@ -74,7 +74,7 @@ ACTION_LABELS = {
     'demo_pickup': "Demo: Pick & Place",
 }
 
-HOME_POSITIONS = [[1, 500], [2, 500], [3, 500], [4, 500], [5, 500], [6, 500]]
+HOME_POSITIONS = [[1, 365], [2, 503], [3, 300], [4, 900], [5, 750], [6, 500]]
 
 # Scripted demo sequences. Each item is (positions, duration_ms).
 # Every sequence must end at HOME_POSITIONS so the next action starts from a known pose.
