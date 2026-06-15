@@ -1063,7 +1063,18 @@ def run_mode(arm, mode, camera_index=2, frame_w=640, frame_h=480,
         headless = True
     cam = _FreshCamera(camera_index, frame_w, frame_h)
     if not cam.start():
-        print("[ERROR] Camera failed to open!")
+        import glob
+        devices = {}
+        for p in sorted(glob.glob("/sys/class/video4linux/video*/name")):
+            try:
+                idx = int(os.path.basename(os.path.dirname(p)).replace("video", ""))
+                devices[idx] = open(p).read().strip()
+            except (OSError, ValueError):
+                pass
+        device_list = ", ".join(f"/dev/video{i}={n}" for i, n in sorted(devices.items())) or "none found"
+        print(f"[ERROR] Camera failed to open /dev/video{camera_index}. "
+              f"Available devices: {device_list}. "
+              f"Pass --camera N to specify the correct index.")
         return
     print(f"[INFO] Camera input: {camera_index} ({frame_w}, {frame_h}) — mode={mode.name} headless={headless}")
 

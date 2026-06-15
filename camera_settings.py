@@ -165,4 +165,9 @@ def find_brio_index(fallback=2):
                 candidates.append(idx)
             except ValueError:
                 continue
-    return min(candidates) if candidates else fallback
+    if candidates:
+        return min(candidates)
+    print(f"[camera] WARNING: no Brio device found in /sys/class/video4linux/*/name — "
+          f"falling back to /dev/video{fallback}. "
+          f"If that fails, run: v4l2-ctl --list-devices  then pass --camera N")
+    return fallback
