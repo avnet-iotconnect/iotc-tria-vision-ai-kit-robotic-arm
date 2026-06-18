@@ -29,54 +29,80 @@ TILT_GAIN = 0.10           # servo units per pixel of vertical error — higher 
 # Sign of correction. +1 if "servo value goes up" corresponds to "camera view
 # moves in the +x/+y direction of the pixel frame". Flip either to -1 if the
 # arm moves AWAY from the ball. Determined by live test, not theory.
-PAN_DIR = -1               # desk-mounted arm: -1 tracks correctly. Wall-mount used +1.
-TILT_DIR = 1               # desk mount: +1 tilts toward ball. Wall mount used -1.
-APPROACH_STEP = 0          # DISABLED on desk mount: increasing shoulder_lift sweeps camera PAST ball (r shrinks as lift rises = arm arcs away from ball)
-ELBOW_REACH_RATIO = 0.6    # elbow_flex contribution per unit of shoulder_lift during approach
+PAN_DIR = -1               # verify with live test: flip to 1 if arm pans away from ball instead of toward it
+TILT_DIR = -1
+APPROACH_STEP = 0          # DISABLED: increasing shoulder_lift sweeps camera PAST ball (r shrinks as lift rises = arm arcs away)
+ELBOW_REACH_RATIO = 0.6    # elbow contribution per lift unit during approach (inactive while APPROACH_STEP=0)
 TILT_ELBOW_RATIO = 0.0     # disabled 2026-04-19 — telemetry showed elbow_flex draining to floor (clamp=0) because tilt's negative contribution outweighed approach's positive one over many frames; once elbow saturates the assist is wasted anyway. Wrist alone handles tilt with the wider CENTER_DEADBAND_PX
 TILT_ELBOW_DIR = 1         # flip to -1 if elbow moves wrong way for tilt
 MAX_STEP = 25              # cap on any single-update servo delta — raised so larger errors actually translate to a visible move; the bus servo has plenty of torque headroom for 25-unit steps
-MIN_TRIM_STEP = 8          # any non-zero trim is bumped to at least this magnitude — bus servos ignore <5-unit commands (static friction), so a 3-unit "trim" is a no-op and tilt_err sits forever just outside CENTER_DEADBAND_PX without ever converging. Tuned for wrist_flex.
+MIN_TRIM_STEP = 3
 MIN_TRIM_STEP_PAN = 18     # shoulder_pan carries the whole forearm + wrist + camera, so its static friction is much higher than wrist_flex — 8-unit commands stall in extended poses (shoulder_lift>600). Verified 2026-04-19 with telemetry showing pan stuck at 552-553 while controller commanded +8 every frame.
 MOVE_DURATION_MS = 220     # per-step move duration; raised so small servo commands actually move (under 150ms many bus servos ignore sub-5-unit deltas)
-CENTER_DEADBAND_PX = 60    # widened 2026-04-19 from 25 — must be >= MIN_TRIM_STEP_PAN × pixels-per-servo-unit (~7 px/unit measured), otherwise a single floored pan command (18 units = ~126 px of ball motion) flings the ball clear past the deadband and the controller oscillates +18, -18, +18 forever. Trade-off: GRAB now fires at up to 60 px off-target, but the gripper jaw is wider than that
-APPROACH_DEADBAND_PX = 60  # 2026-05-02 reverted from a brief 120 experiment. On this Tria + downward-pointing-Brio geometry, descent (shoulder_lift extending forward) moves the ball further past the camera frame ("behind" the arm) — descent reframing fights wrist trim, ball escapes downward, controller cycles SCANNING → TRACKING → SCANNING. Keeping descent gated by tight 60 means: center first (slow when wrist friction-stalls just outside 60), then descend; if you see "stuck at dy~67 forever," the fix is to lower MIN_TRIM_STEP / raise TILT_GAIN so wrist breaks friction sooner — NOT to widen this deadband.
-TARGET_RADIUS_PX = 220     # ball "close enough" radius in pixels (lowered to match what we actually observe at grab distance for the current ball)
-RADIUS_TOLERANCE = 40      # +/- around TARGET_RADIUS_PX considered "at distance"
+CENTER_DEADBAND_PX = 60
+APPROACH_DEADBAND_PX = 60
+TARGET_RADIUS_PX = 112            # ball consistently appears at r=107-112 at all arm positions (camera stays ~constant distance); grab fires when centered
+RADIUS_TOLERANCE = 35             # px: wide enough to fire grab when APPROACH_STEP=0 can't adjust distance
 MIN_CONTOUR_AREA = 200     # ignore tiny mask blobs (noise)
-MIN_FILL_RATIO = 0.65      # contour_area / enclosing_circle_area; ball ≈0.85+, irregular blobs typically <0.5
-# Camera-to-gripper offset in image pixels — measured 2026-04-18 with
-# calibrate_cam_offset.py: arm posed so gripper was physically over the ball,
-# then median (bx-320, by-240) over ~30 frames. The negative X means the
-# gripper sits to the LEFT of the camera optical axis in raw frame coords;
-# Y > 0 means the gripper sits BELOW the optical axis. Controller now aims
-# at this pixel so "centered" actually means "gripper over ball".
-CAM_GRIPPER_OFFSET_X = 0
-CAM_GRIPPER_OFFSET_Y = 0
-# Frames stuck at APPROACH-BLOCKED before giving up and reverting to scanning.
-# At ~15 fps this is ~6 seconds. Prevents permanent hang when ball is out of
-# reach or TARGET_RADIUS_PX is misconfigured for the current setup.
-APPROACH_BLOCKED_TIMEOUT_FRAMES = 90
+MIN_BALL_RADIUS = 20       # reject blobs smaller than this — glints and speck false positives
+MAX_BALL_RADIUS = 150      # reject blobs larger than this — ceiling/wall/floor false positives
+MIN_FILL_RATIO = 0.60      # fraction of enclosing circle area that must be masked; 0.60 suits orange ball (highlights stay orange-tinted, mask is more complete than white)
+# Camera-to-gripper offset in image pixels. Because the camera cannot see the
+# ball when the wrist is in grab position, calibrate_cam_offset.py uses a
+# two-phase process: Phase 1 records the grab wrist position with the gripper
+# physically over the ball; Phase 2 tilts the wrist down until the ball is
+# visible and snapshots the ball's pixel position. The pixel offset is where
+# the ball appears in the tilted (view) frame when the gripper is correctly
+# positioned above it. The controller aims at this pixel during tracking so
+# that snapping the wrist back to grab position puts the gripper over the ball.
+CAM_GRIPPER_OFFSET_X = 20   # set by calibrate_cam_offset.py — run after each physical setup change
+CAM_GRIPPER_OFFSET_Y = 40  # interim: ball consistently at y≈160 vs center 240; run calibrate_cam_offset.py to set precisely
+# Wrist and elbow offsets between grab position and view position. Because
+# the camera cannot see the ball when the wrist is at grab angle, the arm
+# raises the elbow slightly and tilts the wrist down during tracking so the
+# camera can see the ball. These offsets are the servo-unit differences
+# between those two states (view - grab). _do_grab() subtracts both before
+# closing the gripper so the gripper lands on the ball. Set automatically
+# by calibrate_cam_offset.py.
+WRIST_VIEW_OFFSET = -159    # wrist_flex units: view = grab + this; set by calibrate_cam_offset.py
+ELBOW_VIEW_OFFSET = -68    # elbow_flex units: view = grab + this; set by calibrate_cam_offset.py
+GRAB_WRIST_TRIM = 15      # extra wrist_flex at grab snap; 0 = exact Phase1 grab wrist; set by calibrate_cam_offset.py 'w' command
+# Per-zone grab-lift table: [ref_tracking_lift, grab_lift] pairs sorted by ref ascending.
+# ref_tracking_lift — shoulder_lift the arm uses while tracking a ball in that zone (≈ scan row lift).
+# grab_lift         — Phase 1 shoulder_lift (gripper at ball equator); set by calibrate_cam_offset.py.
+# _do_grab linearly interpolates so the arm snaps to the right height regardless of ball distance.
+# Run calibrate_cam_offset.py with ball near the base → updates near zone (ref 673).
+# Run again with ball at arm's reach → updates far zone (ref 507). Mid-range interpolates.
+GRAB_LIFT_TABLE = [
+    [507, 490],   # far  zone — grab_lift raised: 360/430 over-extended (crashed under ball)
+    [673, 551],   # near zone — ball close to base
+]
 # --- search envelope ---
 PAN_MIN = 150              # shoulder_pan clamped to [PAN_MIN, PAN_MAX]; scan right limit is pan~129-145
 PAN_MAX = 800
 # Hard safety limits so an approach that never satisfies radius_ok (bad HSV, wrong-sized ball,
 # mis-set TARGET_RADIUS_PX) can't drive the gripper into the table. Tune by teach-mode probing.
-LIFT_MAX = 780             # approach ceiling; scan poses sit at 507-673, grab needs ~730+
+LIFT_MAX = 780             # approach ceiling; raised from 700 to allow arm to reach ball (scan poses at 670-673, grab needs ~730+)
+LIFT_MIN = 100             # general servo lower bound
 ELBOW_MAX = 985            # elbow_flex upper bound (scan poses reach 940-947)
-SCAN_DWELL_S = 1.5         # hold each scan pose this long before advancing
-SCAN_MOVE_MS = 7500        # duration for moves between scan poses (9-pose grid covers wider area)
-NO_BALL_GRACE_FRAMES = 30  # ~5s at 6 fps — hold pose when ball briefly disappears (clipping, HSV flicker) instead of bouncing back to scan; the scan re-entry was producing the visible "shaking" between brief-track and scan-move every time detection flickered
+ELBOW_MIN = 100            # general servo lower bound
+SCAN_DWELL_S = 1.5         # pause at each pose after movement completes before advancing
+SCAN_MOVE_MS = 7500        # duration for moves between scan poses
+SCAN_ADVANCE_FRAMES = 2    # when actively scanning with no ball, advance after this many frames
+NO_BALL_GRACE_FRAMES = 15  # when transitioning from tracking→scan (just lost a ball), hold this many frames before re-scanning
+SCAN_CONFIRM_FRAMES = 1    # frames required before HALT fires; 1 = immediate for orange ball (tight HSV keeps FP rate low); raise only if false HALTs return
 # --- prediction + telemetry ---
 ENABLE_PREDICTION = False        # master switch for extrapolating ball motion when it's lost
 POS_BUFFER_LEN = 5               # how many recent ball positions we keep for velocity est
 MIN_VELOCITY_PX_PER_FRAME = 2.0  # velocity below this = don't bother predicting
 MAX_PREDICT_FRAMES = 15          # cap predictions so the arm doesn't run away on a bad estimate
-TELEMETRY_INTERVAL_S = 5.0       # how often we publish ball telemetry to /IOTCONNECT — matches device template dataFrequency
-GRIPPER_CLOSE_TARGET = 650  # commanded close position; actual may stall below this on large objects
-GRIPPER_STALL_SLACK = 10    # if actual < target - this, assume stalled against object
-GRIPPER_RELAX_OFFSET = 5    # back off this many units from the stall point to release torque
+TELEMETRY_INTERVAL_S = 2.0       # how often we publish ball telemetry to IoTConnect
+GRIPPER_CLOSE_TARGET = 490  # close until ball resists; 490 prevents over-closing on ping pong ball (previous 550 reached ~519 = mechanism limit at wrong grab height)
+GRIPPER_STALL_SLACK = 20    # fires when actual < 470; ball contact at correct grab height expected ~400-450 (much less than 519 seen when grabbing empty air)
+GRIPPER_RELAX_OFFSET = 3    # hold at stall_point + 3 — minimal squeeze for ping pong
 GRIPPER_RELEASE_DELTA = 40  # if current pos < hold_target - this, user opened the gripper
+WRIST_ROLL_HOME = 504        # wrist_roll value when gripper is level (from calibrated scan poses)
+WRIST_ROLL_COMPENSATION = 0.0    # units of wrist_roll per unit of shoulder_pan offset; set by calibrate_cam_offset.py
 
 # --- arm conventions (from main.execute_arm_action) ---
 SERVO_GRIPPER = 1
@@ -86,9 +112,13 @@ SERVO_ELBOW_FLEX = 4
 SERVO_SHOULDER_LIFT = 5    # smaller = lift up; larger = reach forward/down
 SERVO_SHOULDER_PAN = 6     # smaller = pan left; larger = pan right (verify w/ live test)
 
-# Scan poses — 9-pose near/mid/far × left/center/right grid calibrated for
-# desk-mounted arm. wrist_roll at neutral (502-503) so wrist_flex produces
-# pure pitch and pixel dx/dy stay coupled to pan/flex servos.
+# Scan poses — cycled through while no ball is seen. teach_pose.py captures
+# 6 poses (near/far × left/center/right) and auto-interpolates a mid row,
+# producing 3 arcs of 3 poses each that sweep the full table semicircle.
+# THESE ARE PLACEHOLDER VALUES — run teach_pose.py before use.
+# wrist_roll should be left at 500 (neutral) when teaching so the wrist_flex
+# axis produces pure pitch; off-neutral roll decouples pixel dx/dy from the
+# pan/flex servos and causes tracking to oscillate.
 SCAN_POSES = [
     # near-left
     [[SERVO_SHOULDER_PAN, 888], [SERVO_SHOULDER_LIFT, 673], [SERVO_ELBOW_FLEX, 939], [SERVO_WRIST_FLEX, 104], [SERVO_WRIST_ROLL, 503], [SERVO_GRIPPER, 365]],
@@ -96,7 +126,7 @@ SCAN_POSES = [
     [[SERVO_SHOULDER_PAN, 504], [SERVO_SHOULDER_LIFT, 672], [SERVO_ELBOW_FLEX, 939], [SERVO_WRIST_FLEX, 105], [SERVO_WRIST_ROLL, 502], [SERVO_GRIPPER, 365]],
     # near-right
     [[SERVO_SHOULDER_PAN, 129], [SERVO_SHOULDER_LIFT, 672], [SERVO_ELBOW_FLEX, 940], [SERVO_WRIST_FLEX, 104], [SERVO_WRIST_ROLL, 502], [SERVO_GRIPPER, 365]],
-    # mid-left
+    # mid-left  (interpolated halfway between near and far)
     [[SERVO_SHOULDER_PAN, 894], [SERVO_SHOULDER_LIFT, 590], [SERVO_ELBOW_FLEX, 886], [SERVO_WRIST_FLEX, 150], [SERVO_WRIST_ROLL, 503], [SERVO_GRIPPER, 365]],
     # mid-center
     [[SERVO_SHOULDER_PAN, 507], [SERVO_SHOULDER_LIFT, 588], [SERVO_ELBOW_FLEX, 886], [SERVO_WRIST_FLEX, 150], [SERVO_WRIST_ROLL, 502], [SERVO_GRIPPER, 365]],
@@ -111,14 +141,19 @@ SCAN_POSES = [
 ]
 SCAN_POSE_LABELS = ['near-left', 'near-center', 'near-right', 'mid-left', 'mid-center', 'mid-right', 'far-left', 'far-center', 'far-right']
 
+# Resting pose: shoulder raised up/back, elbow and wrist curved forward/down.
+# Tune these values to match your preferred resting position — they are the
+# starting position when ball_follow activates and the return position after
+# a successful grab.
 HOME_POSE = [
-    [SERVO_SHOULDER_PAN,  500],
-    [SERVO_SHOULDER_LIFT, 750],
-    [SERVO_ELBOW_FLEX,    900],
-    [SERVO_WRIST_FLEX,    300],
-    [SERVO_WRIST_ROLL,    503],
-    [SERVO_GRIPPER,       365],
+    [SERVO_SHOULDER_PAN,  500],  # centered
+    [SERVO_SHOULDER_LIFT, 750],  # raised up/back (scan range 507-673; >673 rotates past down into backward arc)
+    [SERVO_ELBOW_FLEX,    900],  # flexed down to keep center of mass over base
+    [SERVO_WRIST_FLEX,    300],  # hand parallel to ground (compensates for backward shoulder + elbow flex)
+    [SERVO_WRIST_ROLL,    503],  # neutral
+    [SERVO_GRIPPER,       365],  # open (match scan gripper)
 ]
+# Same as HOME_POSE but omits the gripper so a held ball is not dropped.
 HOME_POSE_KEEP_GRIP = [
     [SERVO_SHOULDER_PAN,  500],
     [SERVO_SHOULDER_LIFT, 750],
@@ -168,8 +203,24 @@ def _step_toward(error_px, gain, max_step, min_step=MIN_TRIM_STEP):
     return raw
 
 
+def _lookup_grab_lift(tracking_lift):
+    """Linearly interpolate grab shoulder_lift from GRAB_LIFT_TABLE based on tracking lift."""
+    table = sorted(GRAB_LIFT_TABLE, key=lambda e: e[0])  # ascending ref_tracking_lift
+    if tracking_lift <= table[0][0]:
+        return table[0][1]
+    if tracking_lift >= table[-1][0]:
+        return table[-1][1]
+    for i in range(len(table) - 1):
+        lo, hi = table[i], table[i + 1]
+        if lo[0] <= tracking_lift <= hi[0]:
+            t = (tracking_lift - lo[0]) / (hi[0] - lo[0])
+            return int(round(lo[1] + (hi[1] - lo[1]) * t))
+    return table[-1][1]
+
+
 class BallFollowMode(Mode):
     name = "ball"
+    skip_global_home = True   # suppress main.py's all-500 home move; we start from wherever the arm is
 
     def __init__(self):
         self.lower = None
@@ -179,6 +230,8 @@ class BallFollowMode(Mode):
         self.last_log = ""
         self.hold_target = None  # gripper position we're holding at; None = not holding
         self.no_ball_frames = 0  # consecutive frames with no ball detected
+        self.ball_confirm = 0    # consecutive real-ball frames; HALT waits for SCAN_CONFIRM_FRAMES
+        self.scan_active = True  # True = actively sweeping; False = just lost a tracked ball
         self.pos_buffer = deque(maxlen=POS_BUFFER_LEN)  # (frame_idx, bx, by, br)
         self.pred_x = 0.0
         self.pred_y = 0.0
@@ -197,56 +250,33 @@ class BallFollowMode(Mode):
         self._perf_detect = 0.0
         self._perf_arm = 0.0
         self._perf_every = 30
-        # Calibration-loaded overrides (set by setup(); fall back to module constants)
-        self.cam_gripper_offset_x = CAM_GRIPPER_OFFSET_X
-        self.cam_gripper_offset_y = CAM_GRIPPER_OFFSET_Y
-        self.target_radius_px = TARGET_RADIUS_PX
-        self.scan_poses = SCAN_POSES
-        self.scan_pose_labels = SCAN_POSE_LABELS
-        self._approach_blocked_frames = 0
 
     def setup(self, arm):
         if not os.path.exists(CONFIG_PATH):
             raise RuntimeError(f"ball_color.json not found at {CONFIG_PATH}; run ball_calibrate.py first")
         with open(CONFIG_PATH) as f:
             cfg = json.load(f)
-        # Validate HSV values to catch inverted or out-of-range configs silently
-        # stored by a corrupted write or manual edit.
-        h_min = max(0, min(180, int(cfg.get("h_min", 0))))
-        h_max = max(0, min(180, int(cfg.get("h_max", 180))))
-        s_min = max(0, min(255, int(cfg.get("s_min", 0))))
-        s_max = max(0, min(255, int(cfg.get("s_max", 255))))
-        v_min = max(0, min(255, int(cfg.get("v_min", 0))))
-        v_max = max(0, min(255, int(cfg.get("v_max", 255))))
-        if h_min > h_max:
-            print(f"[ball] WARNING: ball_color.json has h_min({h_min}) > h_max({h_max}) — swapping")
-            h_min, h_max = h_max, h_min
-        self.lower = np.array([h_min, s_min, v_min], dtype=np.uint8)
-        self.upper = np.array([h_max, s_max, v_max], dtype=np.uint8)
+        self.lower = np.array([cfg["h_min"], cfg["s_min"], cfg["v_min"]], dtype=np.uint8)
+        self.upper = np.array([cfg["h_max"], cfg["s_max"], cfg["v_max"]], dtype=np.uint8)
         print(f"[ball] HSV range loaded: lower={self.lower.tolist()} upper={self.upper.tolist()}")
-
-        import scan_poses_store
-        loaded_poses, loaded_labels = scan_poses_store.load()
-        if loaded_poses:
-            self.scan_poses = loaded_poses
-            self.scan_pose_labels = loaded_labels
-            print(f"[ball] using {len(loaded_poses)} scan poses from disk: {loaded_labels}")
-
-        import cam_gripper_offset_store
-        ofs = cam_gripper_offset_store.load()
-        if ofs:
-            self.cam_gripper_offset_x = int(ofs.get('cam_gripper_offset_x', CAM_GRIPPER_OFFSET_X))
-            self.cam_gripper_offset_y = int(ofs.get('cam_gripper_offset_y', CAM_GRIPPER_OFFSET_Y))
-            self.target_radius_px = int(ofs.get('target_radius_px', TARGET_RADIUS_PX))
-            print(f"[ball] cam-gripper offset loaded: "
-                  f"x={self.cam_gripper_offset_x} y={self.cam_gripper_offset_y} "
-                  f"target_r={self.target_radius_px}")
-
-        print(f"[ball] moving to scan pose [{self.scan_pose_labels[0]}]...")
-        arm.setPosition(self.scan_poses[0], duration=1500, wait=True)
+        print(f"[ball] moving to scan pose [{SCAN_POSE_LABELS[0]}]...")
+        arm.setPosition(SCAN_POSES[0], duration=2500, wait=True)
         self.scan_idx = 0
-        self.last_scan_move_at = time.time()
+        self.scan_active = True
+        self.ball_confirm = 0
+        # Backdate by SCAN_MOVE_MS only so next_advance_at = now + SCAN_DWELL_S.
+        # Arm just arrived at near-left; give it the full dwell (1.5 s) to look
+        # before sweeping. Backdating by SCAN_MOVE_MS+SCAN_DWELL_S was advancing
+        # instantly, before the arm (coming from HOME) had fully settled at near-left.
+        self.last_scan_move_at = time.time() - SCAN_MOVE_MS / 1000.0
         self.state = "IDLE"
+
+    def teardown(self, arm):
+        try:
+            print("[ball] returning to home pose...")
+            arm.setPosition(HOME_POSE, duration=2000, wait=True)
+        except Exception as e:
+            print(f"[ball] teardown move failed: {e}")
 
     def process_frame(self, frame, arm):
         from main import send_telemetry  # lazy to avoid circular import
@@ -255,8 +285,8 @@ class BallFollowMode(Mode):
         h, w = frame.shape[:2]
         # Aim at the pixel where the ball appears when the gripper is over it,
         # not the geometric image center. See CAM_GRIPPER_OFFSET_X/Y.
-        cx_target = w // 2 + self.cam_gripper_offset_x
-        cy_target = h // 2 + self.cam_gripper_offset_y
+        cx_target = w // 2 + CAM_GRIPPER_OFFSET_X
+        cy_target = h // 2 + CAM_GRIPPER_OFFSET_Y
 
         # Single batched USB read for all 6 servos, reused below.
         # If even the per-servo fallback inside _read_all_positions fails,
@@ -281,8 +311,7 @@ class BallFollowMode(Mode):
                             (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7,
                             (0, 255, 255), 2, cv2.LINE_AA)
                 self._log(f"HOLDING: pos={gpos} target={self.hold_target}")
-                self.state = "HOLDING"
-                self._maybe_send_telemetry(arm, send_telemetry, positions=pos)
+                self.state = "IDLE"
                 return annotated
 
         t_detect_start = time.perf_counter()
@@ -296,6 +325,7 @@ class BallFollowMode(Mode):
         is_prediction = False
         ball = real_ball
         if real_ball is None:
+            self.ball_confirm = 0  # streak broken — reset confirmation counter
             predicted = self._maybe_predict()
             if predicted is not None:
                 ball = predicted
@@ -304,26 +334,29 @@ class BallFollowMode(Mode):
             # Real observation — record it and cancel any in-progress prediction.
             self.pos_buffer.append((self.frame_count, real_ball[0], real_ball[1], real_ball[2]))
             self.pred_frames_remaining = 0
-            # If we were scanning and just acquired the ball, halt the in-flight
-            # scan move (which has duration=SCAN_MOVE_MS — could still be panning
-            # for another 1-2s). Without this, the arm keeps sweeping past the
-            # ball before the small per-frame TRACKING commands can take hold,
-            # producing the "overshoot then chase back" pattern.
-            if self.no_ball_frames > 0:
-                try:
-                    halt_targets = [
-                        [SERVO_SHOULDER_PAN, pos[SERVO_SHOULDER_PAN]],
-                        [SERVO_WRIST_FLEX, pos[SERVO_WRIST_FLEX]],
-                        [SERVO_SHOULDER_LIFT, pos[SERVO_SHOULDER_LIFT]],
-                        [SERVO_ELBOW_FLEX, pos[SERVO_ELBOW_FLEX]],
-                    ]
-                    arm.setPosition(halt_targets, duration=80, wait=False)
-                    print(f"[ball] HALT scan: pan={pos[SERVO_SHOULDER_PAN]} "
-                          f"flex={pos[SERVO_WRIST_FLEX]} lift={pos[SERVO_SHOULDER_LIFT]} "
-                          f"elbow={pos[SERVO_ELBOW_FLEX]}")
-                except Exception as e:
-                    print(f"[ball] halt failed: {e}")
-            self.no_ball_frames = 0
+            self.ball_confirm += 1
+            # Require SCAN_CONFIRM_FRAMES consecutive real detections before treating
+            # this as a genuine ball. Until confirmed, do NOT reset no_ball_frames —
+            # if we reset it on every intermittent 1-frame detection, no_ball_frames
+            # oscillates 0→1→0→1 and never reaches either advance threshold, freezing
+            # the scan indefinitely.
+            if self.ball_confirm >= SCAN_CONFIRM_FRAMES:
+                self.no_ball_frames = 0
+                if self.ball_confirm == SCAN_CONFIRM_FRAMES and self.scan_active:
+                    try:
+                        halt_targets = [
+                            [SERVO_SHOULDER_PAN, pos[SERVO_SHOULDER_PAN]],
+                            [SERVO_WRIST_FLEX, pos[SERVO_WRIST_FLEX]],
+                            [SERVO_SHOULDER_LIFT, pos[SERVO_SHOULDER_LIFT]],
+                            [SERVO_ELBOW_FLEX, pos[SERVO_ELBOW_FLEX]],
+                        ]
+                        arm.setPosition(halt_targets, duration=80, wait=False)
+                        print(f"[ball] HALT scan (confirmed {SCAN_CONFIRM_FRAMES}f): "
+                              f"pan={pos[SERVO_SHOULDER_PAN]} flex={pos[SERVO_WRIST_FLEX]} "
+                              f"lift={pos[SERVO_SHOULDER_LIFT]} elbow={pos[SERVO_ELBOW_FLEX]}")
+                    except Exception as e:
+                        print(f"[ball] halt failed: {e}")
+                self.scan_active = False  # confirmed tracking; use long grace if ball disappears
 
         # Flip first so all text we draw below reads the right way around.
         # Ball x-coords must be mirrored too: bx_disp = w - bx.
@@ -340,30 +373,46 @@ class BallFollowMode(Mode):
         if ball is None:
             # truly lost — nothing real, nothing to predict from
             self.no_ball_frames += 1
-            label = self.scan_pose_labels[self.scan_idx]
-            self._log(f"SCAN[{label}]: no ball ({self.no_ball_frames})")
-            cv2.putText(annotated, f"scan {label}  no ball ({self.no_ball_frames})", (10, 30),
+            label = SCAN_POSE_LABELS[self.scan_idx]
+            moving = (time.time() - self.last_scan_move_at) < (SCAN_MOVE_MS / 1000.0)
+            prefix = "→" if moving else ""
+            self._log(f"SCAN[{prefix}{label}]: no ball ({self.no_ball_frames})")
+            cv2.putText(annotated, f"scan {prefix}{label}  no ball ({self.no_ball_frames})", (10, 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2, cv2.LINE_AA)
             self.state = "SCANNING"
             self.last_is_prediction = False
-            self._approach_blocked_frames = 0
             # After a brief grace period, cycle scan poses to search the table.
             # wait=False so the camera loop keeps reading frames during the move
             # (otherwise video freezes for SCAN_MOVE_MS each transition). We pace
             # transitions ourselves: don't advance until the prior move's expected
             # completion time has passed plus SCAN_DWELL_S of viewing time.
-            if self.no_ball_frames >= NO_BALL_GRACE_FRAMES:
+            grace = SCAN_ADVANCE_FRAMES if self.scan_active else NO_BALL_GRACE_FRAMES
+            if self.no_ball_frames >= grace:
                 now = time.time()
                 next_advance_at = self.last_scan_move_at + (SCAN_MOVE_MS / 1000.0) + SCAN_DWELL_S
                 if now >= next_advance_at:
-                    self.scan_idx = (self.scan_idx + 1) % len(self.scan_poses)
-                    next_label = self.scan_pose_labels[self.scan_idx]
+                    self.scan_idx = (self.scan_idx + 1) % len(SCAN_POSES)
+                    next_label = SCAN_POSE_LABELS[self.scan_idx]
                     print(f"[ball] scanning -> {next_label}")
                     try:
-                        arm.setPosition(self.scan_poses[self.scan_idx], duration=SCAN_MOVE_MS, wait=False)
+                        arm.setPosition(SCAN_POSES[self.scan_idx], duration=SCAN_MOVE_MS, wait=False)
                     except Exception as e:
                         print(f"[ball] scan move failed: {e}")
                     self.last_scan_move_at = time.time()
+                    self.scan_active = True
+                    self.no_ball_frames = 0  # reset per-pose so each pose gets a fresh grace window
+                elif self.no_ball_frames == grace and not self.scan_active:
+                    # A HALT (from confirmed or false ball) froze the arm mid-sweep.
+                    # Grace period has elapsed but the sweep timer hasn't expired —
+                    # re-issue the move so the arm actually reaches the current target.
+                    print(f"[ball] scan resume → {SCAN_POSE_LABELS[self.scan_idx]}")
+                    try:
+                        arm.setPosition(SCAN_POSES[self.scan_idx], duration=SCAN_MOVE_MS, wait=False)
+                    except Exception as e:
+                        print(f"[ball] scan resume failed: {e}")
+                    self.last_scan_move_at = time.time()
+                    self.scan_active = True
+                    self.no_ball_frames = 0
             self._maybe_send_telemetry(arm, send_telemetry, positions=pos)
             return annotated
 
@@ -378,7 +427,7 @@ class BallFollowMode(Mode):
                         (0, 165, 255), 2, cv2.LINE_AA)
         pan_err = bx - cx_target
         tilt_err = by - cy_target
-        radius_err = self.target_radius_px - br
+        radius_err = TARGET_RADIUS_PX - br
         centered_ok = abs(pan_err) <= CENTER_DEADBAND_PX and abs(tilt_err) <= CENTER_DEADBAND_PX
         # Looser gate that just requires the ball to be roughly under the gripper:
         # used to allow descent while pan/tilt are still trimming, so we don't
@@ -389,7 +438,7 @@ class BallFollowMode(Mode):
                     f"r={int(br)} dx={pan_err:+d} dy={tilt_err:+d}",
                     (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2, cv2.LINE_AA)
         cv2.putText(annotated,
-                    f"center={'OK' if centered_ok else 'NO'}  radius={'OK' if radius_ok else 'NO'} (target={self.target_radius_px}+/-{RADIUS_TOLERANCE})",
+                    f"center={'OK' if centered_ok else 'NO'}  radius={'OK' if radius_ok else 'NO'} (target={TARGET_RADIUS_PX}+/-{RADIUS_TOLERANCE})",
                     (10, 55), cv2.FONT_HERSHEY_SIMPLEX, 0.55,
                     (0, 255, 0) if centered_ok and radius_ok else (0, 200, 255),
                     2, cv2.LINE_AA)
@@ -399,17 +448,23 @@ class BallFollowMode(Mode):
         if not is_prediction and centered_ok and radius_ok:
             self.state = "GRABBING"
             self._log("GRAB: centered and at distance — closing gripper")
-            self._do_grab(arm)
+            self._do_grab(arm, pos)
             self.state = "HOLDING"
             try:
-                send_telemetry(arm, extras={"ballTrack": self.telemetry()}, positions=pos)
-                self.last_telemetry_at = time.time()
+                send_telemetry(arm)
             except Exception as e:
                 print(f"[ball] telemetry after grab failed: {e}")
+            self.state = "IDLE"
             return annotated
 
         # Throttle servo commands so we don't spam at full frame rate.
         if self.frame_count % UPDATE_EVERY != 0:
+            return annotated
+
+        # Don't issue servo commands while waiting for scan confirmation.
+        # A 220ms tracking command overrides the 5000ms scan move and stops
+        # the arm from reaching its target — the scan appears to freeze.
+        if self.scan_active and self.ball_confirm < SCAN_CONFIRM_FRAMES:
             return annotated
 
         self.state = "PREDICTING" if is_prediction else "TRACKING"
@@ -429,20 +484,12 @@ class BallFollowMode(Mode):
         # (looser approach_centered_ok). Pan/tilt corrections continue every
         # frame and trim the ball back toward the gripper aim point even while
         # we descend, so we don't wait forever for perfect centering.
-        if approach_centered_ok and br < self.target_radius_px - RADIUS_TOLERANCE:
+        if approach_centered_ok and br < TARGET_RADIUS_PX - RADIUS_TOLERANCE:
             # Hard ceiling: if we're already at the safety limit, stop approaching.
             # Prevents table slam when radius_ok never triggers.
             if pos[SERVO_SHOULDER_LIFT] >= LIFT_MAX or pos[SERVO_ELBOW_FLEX] >= ELBOW_MAX:
-                self._approach_blocked_frames += 1
-                self._log(f"APPROACH-BLOCKED: lift={pos[SERVO_SHOULDER_LIFT]}>={LIFT_MAX} or elbow={pos[SERVO_ELBOW_FLEX]}>={ELBOW_MAX}; r={int(br)} target={self.target_radius_px} ({self._approach_blocked_frames}/{APPROACH_BLOCKED_TIMEOUT_FRAMES})")
-                if self._approach_blocked_frames >= APPROACH_BLOCKED_TIMEOUT_FRAMES:
-                    print(f"[ball] APPROACH-BLOCKED for {self._approach_blocked_frames} frames — resetting to scan")
-                    self._approach_blocked_frames = 0
-                    self.state = "SCANNING"
-                    self.no_ball_frames = NO_BALL_GRACE_FRAMES  # trigger immediate scan advance
-                    self.last_scan_move_at = 0.0
+                self._log(f"APPROACH-BLOCKED: lift={pos[SERVO_SHOULDER_LIFT]}>={LIFT_MAX} or elbow={pos[SERVO_ELBOW_FLEX]}>={ELBOW_MAX}; r={int(br)} target={TARGET_RADIUS_PX}")
             else:
-                self._approach_blocked_frames = 0
                 d_lift = APPROACH_STEP   # reach forward
                 # Coordinate elbow with shoulder — extends the arm rather than just
                 # tipping the whole thing from the shoulder. Ratio is empirical.
@@ -459,27 +506,42 @@ class BallFollowMode(Mode):
                 # much, and a floored MIN_TRIM_STEP_PAN command for a within-deadband
                 # error overshoots the deadband (~126 px shift > 60 px deadband),
                 # causing the same +18/-18 sign-flip oscillation we hit on 2026-04-19.
-                if d_tilt == 0 and tilt_err != 0:
+                if d_tilt == 0 and abs(tilt_err) > 20:
+                    d_tilt = int(round(_step_toward(tilt_err, TILT_GAIN, MAX_STEP))) * TILT_DIR
+        elif approach_centered_ok and br > TARGET_RADIUS_PX + RADIUS_TOLERANCE:
+            # Ball too close — retreat so we can reach the grab distance.
+            # Without this the arm stalls at near scan positions (lift≈670) where
+            # the ball already appears larger than TARGET_RADIUS_PX and can never
+            # trigger a grab or an approach step.
+            if pos[SERVO_SHOULDER_LIFT] <= LIFT_MIN or pos[SERVO_ELBOW_FLEX] <= ELBOW_MIN:
+                self._log(f"RETREAT-BLOCKED: lift={pos[SERVO_SHOULDER_LIFT]}<={LIFT_MIN} or elbow={pos[SERVO_ELBOW_FLEX]}<={ELBOW_MIN}; r={int(br)} target={TARGET_RADIUS_PX}")
+            else:
+                d_lift = -APPROACH_STEP  # pull back from table
+                d_elbow += int(round(-APPROACH_STEP * ELBOW_REACH_RATIO))
+                if d_tilt == 0 and abs(tilt_err) > 20:
                     d_tilt = int(round(_step_toward(tilt_err, TILT_GAIN, MAX_STEP))) * TILT_DIR
 
         if d_pan == 0 and d_tilt == 0 and d_lift == 0 and d_elbow == 0:
             return annotated
 
         targets = []
+        pan_now = pos[SERVO_SHOULDER_PAN]
         if d_pan:
-            new_pan = _clamp(pos[SERVO_SHOULDER_PAN] + d_pan, lo=PAN_MIN, hi=PAN_MAX)
-            targets.append([SERVO_SHOULDER_PAN, new_pan])
+            pan_now = _clamp(pos[SERVO_SHOULDER_PAN] + d_pan, lo=PAN_MIN, hi=PAN_MAX)
+            targets.append([SERVO_SHOULDER_PAN, pan_now])
+        # Wrist-roll compensation: keep gripper tips level when shoulder_pan deviates
+        # from center. WRIST_ROLL_COMPENSATION is calibrated by calibrate_cam_offset.py.
+        _wrist_roll_tgt = _clamp(int(WRIST_ROLL_HOME - (pan_now - 500) * WRIST_ROLL_COMPENSATION))
+        if abs(_wrist_roll_tgt - pos[SERVO_WRIST_ROLL]) >= 5:
+            targets.append([SERVO_WRIST_ROLL, _wrist_roll_tgt])
         if d_tilt:
             new_tilt = _clamp(pos[SERVO_WRIST_FLEX] + d_tilt)
-            # Skip command when already at the limit — avoids sustained stall
-            # current against the physical stop if the ball stays high in frame.
-            if new_tilt != pos[SERVO_WRIST_FLEX]:
-                targets.append([SERVO_WRIST_FLEX, new_tilt])
+            targets.append([SERVO_WRIST_FLEX, new_tilt])
         if d_lift:
-            new_lift = _clamp(pos[SERVO_SHOULDER_LIFT] + d_lift, hi=LIFT_MAX)
+            new_lift = _clamp(pos[SERVO_SHOULDER_LIFT] + d_lift, lo=LIFT_MIN, hi=LIFT_MAX)
             targets.append([SERVO_SHOULDER_LIFT, new_lift])
         if d_elbow:
-            new_elbow = _clamp(pos[SERVO_ELBOW_FLEX] + d_elbow, hi=ELBOW_MAX)
+            new_elbow = _clamp(pos[SERVO_ELBOW_FLEX] + d_elbow, lo=ELBOW_MIN, hi=ELBOW_MAX)
             targets.append([SERVO_ELBOW_FLEX, new_elbow])
 
         t_arm_start = time.perf_counter()
@@ -532,7 +594,7 @@ class BallFollowMode(Mode):
             if area < MIN_CONTOUR_AREA or area <= best_area:
                 continue
             (x, y), r = cv2.minEnclosingCircle(c)
-            if r <= 0:
+            if r < MIN_BALL_RADIUS or r > MAX_BALL_RADIUS:
                 continue
             fill_ratio = area / (np.pi * r * r)
             if fill_ratio < MIN_FILL_RATIO:
@@ -541,12 +603,37 @@ class BallFollowMode(Mode):
             best_area = area
         return best
 
-    def _do_grab(self, arm):
+    def _do_grab(self, arm, pos):
+        # Apply wrist-roll compensation before snapping to grab position so the
+        # gripper tips are level when the jaws close, regardless of pan angle.
+        _roll_tgt = _clamp(int(WRIST_ROLL_HOME - (pos[SERVO_SHOULDER_PAN] - 500) * WRIST_ROLL_COMPENSATION))
+        if abs(_roll_tgt - pos[SERVO_WRIST_ROLL]) >= 5:
+            arm.setPosition([[SERVO_WRIST_ROLL, _roll_tgt]], duration=300, wait=True)
+        # Snap wrist, elbow, and shoulder back to grab position.
+        # grab_lift is interpolated from GRAB_LIFT_TABLE based on current tracking lift
+        # so the arm reaches the correct height whether the ball is near or far.
+        try:
+            tracking_lift = pos[SERVO_SHOULDER_LIFT]
+            grab_lift  = _lookup_grab_lift(tracking_lift)
+            current_wrist = int(arm.getPosition(SERVO_WRIST_FLEX))
+            current_elbow = int(arm.getPosition(SERVO_ELBOW_FLEX))
+            grab_wrist = _clamp(current_wrist - WRIST_VIEW_OFFSET + GRAB_WRIST_TRIM)
+            grab_elbow = _clamp(current_elbow - ELBOW_VIEW_OFFSET)
+            print(f"[ball] grab snap (tracking_lift={tracking_lift}): "
+                  f"lift->{grab_lift}  wrist {current_wrist}->{grab_wrist}  elbow {current_elbow}->{grab_elbow}")
+            arm.setPosition([
+                [SERVO_SHOULDER_LIFT, grab_lift],
+                [SERVO_WRIST_FLEX,    grab_wrist],
+                [SERVO_ELBOW_FLEX,    grab_elbow],
+            ], duration=600, wait=True)
+        except Exception as e:
+            print(f"[ball] grab snap failed: {e}")
+
         # Open fully, close on the ball, detect stall + relax, then lift and
         # return home. Home pose deliberately excludes the gripper so the ball
         # isn't dropped.
         arm.setPosition(SERVO_GRIPPER, 60, duration=500, wait=True)
-        arm.setPosition(SERVO_GRIPPER, GRIPPER_CLOSE_TARGET, duration=700, wait=True)
+        arm.setPosition(SERVO_GRIPPER, GRIPPER_CLOSE_TARGET, duration=1400, wait=True)
 
         actual = arm.getPosition(SERVO_GRIPPER)
         if actual < GRIPPER_CLOSE_TARGET - GRIPPER_STALL_SLACK:
@@ -557,9 +644,10 @@ class BallFollowMode(Mode):
         else:
             self.hold_target = GRIPPER_CLOSE_TARGET
 
+        # First raise the arm clear of the table, then move to home position.
         arm.setPosition([
-            [SERVO_SHOULDER_LIFT, 300],
-            [SERVO_ELBOW_FLEX, 350],
+            [SERVO_SHOULDER_LIFT, 350],
+            [SERVO_ELBOW_FLEX,    350],
         ], duration=1500, wait=True)
         arm.setPosition(HOME_POSE_KEEP_GRIP, duration=1800, wait=True)
 

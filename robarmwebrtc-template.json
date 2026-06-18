@@ -1,6 +1,6 @@
 {
-    "code": "robArm5",
-    "name": "robArm5",
+    "code": "robarmRTC",
+    "name": "robarmRTC",
     "authType": 2,
     "attributes": [
         {
@@ -58,10 +58,19 @@
             "aggregateTypes": []
         },
         {
+            "name": "state",
+            "displayName": "",
+            "type": "STRING",
+            "description": "",
+            "unit": "",
+            "aggregateTypes": []
+        },
+        {
             "name": "sysInfo_system",
             "displayName": "",
             "type": "OBJECT",
             "description": "Static hardware/OS identification plus host identity and uptime.",
+            "attributeColor": "",
             "childs": [
                 {
                     "name": "hostname",
@@ -151,6 +160,7 @@
             "displayName": "",
             "type": "OBJECT",
             "description": "CPU utilization, temperature, and the top CPU-consuming process.",
+            "attributeColor": "",
             "childs": [
                 {
                     "name": "usage_percent",
@@ -200,6 +210,7 @@
             "displayName": "",
             "type": "OBJECT",
             "description": "RAM utilization, temperature, and the top memory-consuming process.",
+            "attributeColor": "",
             "childs": [
                 {
                     "name": "percent",
@@ -273,6 +284,7 @@
             "displayName": "",
             "type": "OBJECT",
             "description": "Disk usage for the root filesystem.",
+            "attributeColor": "",
             "childs": [
                 {
                     "name": "total",
@@ -314,6 +326,7 @@
             "displayName": "",
             "type": "OBJECT",
             "description": "Adreno GPU utilization and temperature.",
+            "attributeColor": "",
             "childs": [
                 {
                     "name": "usage_percent",
@@ -339,6 +352,7 @@
             "displayName": "",
             "type": "OBJECT",
             "description": "Ball-follow mode runtime state (tracking, prediction, servo deltas).",
+            "attributeColor": "",
             "childs": [
                 {
                     "name": "state",
@@ -361,7 +375,7 @@
                     "displayName": "",
                     "type": "INTEGER",
                     "description": "Ball center X in camera pixels (original, unmirrored frame).",
-                    "unit": "px",
+                    "unit": "",
                     "attributeColor": ""
                 },
                 {
@@ -369,7 +383,7 @@
                     "displayName": "",
                     "type": "INTEGER",
                     "description": "Ball center Y in camera pixels.",
-                    "unit": "px",
+                    "unit": "",
                     "attributeColor": ""
                 },
                 {
@@ -377,7 +391,7 @@
                     "displayName": "",
                     "type": "INTEGER",
                     "description": "Ball apparent radius in pixels.",
-                    "unit": "px",
+                    "unit": "",
                     "attributeColor": ""
                 },
                 {
@@ -385,7 +399,7 @@
                     "displayName": "",
                     "type": "INTEGER",
                     "description": "Horizontal error: ball x minus frame center x.",
-                    "unit": "px",
+                    "unit": "",
                     "attributeColor": ""
                 },
                 {
@@ -393,7 +407,7 @@
                     "displayName": "",
                     "type": "INTEGER",
                     "description": "Vertical error: ball y minus frame center y.",
-                    "unit": "px",
+                    "unit": "",
                     "attributeColor": ""
                 },
                 {
@@ -401,7 +415,7 @@
                     "displayName": "",
                     "type": "INTEGER",
                     "description": "Distance error: target radius minus current radius.",
-                    "unit": "px",
+                    "unit": "",
                     "attributeColor": ""
                 },
                 {
@@ -409,7 +423,7 @@
                     "displayName": "",
                     "type": "DECIMAL",
                     "description": "Estimated horizontal ball velocity in pixels per frame.",
-                    "unit": "px/f",
+                    "unit": "",
                     "attributeColor": ""
                 },
                 {
@@ -417,7 +431,7 @@
                     "displayName": "",
                     "type": "DECIMAL",
                     "description": "Estimated vertical ball velocity in pixels per frame.",
-                    "unit": "px/f",
+                    "unit": "",
                     "attributeColor": ""
                 },
                 {
@@ -546,22 +560,8 @@
     ],
     "commands": [
         {
-            "name": "move_left",
-            "command": "move_left",
-            "requiredParam": false,
-            "requiredAck": true,
-            "isOTACommand": false
-        },
-        {
-            "name": "move_right",
-            "command": "move_right",
-            "requiredParam": false,
-            "requiredAck": true,
-            "isOTACommand": false
-        },
-        {
-            "name": "move_up",
-            "command": "move_up",
+            "name": "wrist_flex_up",
+            "command": "wrist_flex_up",
             "requiredParam": false,
             "requiredAck": true,
             "isOTACommand": false
@@ -574,20 +574,6 @@
             "isOTACommand": false
         },
         {
-            "name": "move_forward",
-            "command": "move_forward",
-            "requiredParam": false,
-            "requiredAck": true,
-            "isOTACommand": false
-        },
-        {
-            "name": "move_backward",
-            "command": "move_backward",
-            "requiredParam": false,
-            "requiredAck": true,
-            "isOTACommand": false
-        },
-        {
             "name": "move_to",
             "command": "move_to",
             "requiredParam": true,
@@ -595,8 +581,8 @@
             "isOTACommand": false
         },
         {
-            "name": "move_to_home",
-            "command": "move_to_home",
+            "name": "wrist_flex_down",
+            "command": "wrist_flex_down",
             "requiredParam": false,
             "requiredAck": true,
             "isOTACommand": false
@@ -609,71 +595,15 @@
             "isOTACommand": false
         },
         {
-            "name": "close_gripper",
-            "command": "close_gripper",
+            "name": "move_forward",
+            "command": "move_forward",
             "requiredParam": false,
             "requiredAck": true,
             "isOTACommand": false
         },
         {
-            "name": "wrist_roll_cw",
-            "command": "wrist_roll_cw",
-            "requiredParam": false,
-            "requiredAck": true,
-            "isOTACommand": false
-        },
-        {
-            "name": "wrist_roll_ccw",
-            "command": "wrist_roll_ccw",
-            "requiredParam": false,
-            "requiredAck": true,
-            "isOTACommand": false
-        },
-        {
-            "name": "wrist_flex_up",
-            "command": "wrist_flex_up",
-            "requiredParam": false,
-            "requiredAck": true,
-            "isOTACommand": false
-        },
-        {
-            "name": "wrist_flex_down",
-            "command": "wrist_flex_down",
-            "requiredParam": false,
-            "requiredAck": true,
-            "isOTACommand": false
-        },
-        {
-            "name": "demo_wave",
-            "command": "demo_wave",
-            "requiredParam": false,
-            "requiredAck": true,
-            "isOTACommand": false
-        },
-        {
-            "name": "demo_bow",
-            "command": "demo_bow",
-            "requiredParam": false,
-            "requiredAck": true,
-            "isOTACommand": false
-        },
-        {
-            "name": "demo_stretch",
-            "command": "demo_stretch",
-            "requiredParam": false,
-            "requiredAck": true,
-            "isOTACommand": false
-        },
-        {
-            "name": "demo_scan",
-            "command": "demo_scan",
-            "requiredParam": false,
-            "requiredAck": true,
-            "isOTACommand": false
-        },
-        {
-            "name": "demo_shake_no",
-            "command": "demo_shake_no",
+            "name": "move_to_home",
+            "command": "move_to_home",
             "requiredParam": false,
             "requiredAck": true,
             "isOTACommand": false
@@ -686,43 +616,85 @@
             "isOTACommand": false
         },
         {
-            "name": "set_mode",
-            "command": "set_mode",
-            "requiredParam": true,
-            "requiredAck": true,
-            "isOTACommand": false
-        },
-        {
-            "name": "set_mode_ball",
-            "command": "set_mode_ball",
+            "name": "wrist_roll_cw",
+            "command": "wrist_roll_cw",
             "requiredParam": false,
             "requiredAck": true,
             "isOTACommand": false
         },
         {
-            "name": "set_mode_pickplace",
-            "command": "set_mode_pickplace",
+            "name": "move_up",
+            "command": "move_up",
             "requiredParam": false,
             "requiredAck": true,
             "isOTACommand": false
         },
         {
-            "name": "set_mode_asl",
-            "command": "set_mode_asl",
+            "name": "close_gripper",
+            "command": "close_gripper",
             "requiredParam": false,
             "requiredAck": true,
             "isOTACommand": false
         },
         {
-            "name": "set_mode_yolo_ball",
-            "command": "set_mode_yolo_ball",
+            "name": "move_left",
+            "command": "move_left",
             "requiredParam": false,
             "requiredAck": true,
             "isOTACommand": false
         },
         {
-            "name": "set_mode_yolo_pickplace",
-            "command": "set_mode_yolo_pickplace",
+            "name": "demo_shake_no",
+            "command": "demo_shake_no",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "move_backward",
+            "command": "move_backward",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "demo_stretch",
+            "command": "demo_stretch",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "demo_bow",
+            "command": "demo_bow",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "demo_scan",
+            "command": "demo_scan",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "demo_wave",
+            "command": "demo_wave",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "move_right",
+            "command": "move_right",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "wrist_roll_ccw",
+            "command": "wrist_roll_ccw",
             "requiredParam": false,
             "requiredAck": true,
             "isOTACommand": false
@@ -749,13 +721,6 @@
             "isOTACommand": false
         },
         {
-            "name": "calibrate_offset",
-            "command": "calibrate_offset",
-            "requiredParam": false,
-            "requiredAck": true,
-            "isOTACommand": false
-        },
-        {
             "name": "calibrate_grab_depth",
             "command": "calibrate_grab_depth",
             "requiredParam": false,
@@ -763,57 +728,8 @@
             "isOTACommand": false
         },
         {
-            "name": "stop_demo",
-            "command": "stop_demo",
-            "requiredParam": false,
-            "requiredAck": true,
-            "isOTACommand": false
-        },
-        {
-            "name": "stop_calibration",
-            "command": "stop_calibration",
-            "requiredParam": false,
-            "requiredAck": true,
-            "isOTACommand": false
-        },
-        {
-            "name": "teach_scan_pose",
-            "command": "teach_scan_pose",
-            "requiredParam": false,
-            "requiredAck": true,
-            "isOTACommand": false
-        },
-        {
-            "name": "scan_poses_show",
-            "command": "scan_poses_show",
-            "requiredParam": false,
-            "requiredAck": true,
-            "isOTACommand": false
-        },
-        {
-            "name": "scan_poses_reset",
-            "command": "scan_poses_reset",
-            "requiredParam": false,
-            "requiredAck": true,
-            "isOTACommand": false
-        },
-        {
-            "name": "teach_drop_pose",
-            "command": "teach_drop_pose",
-            "requiredParam": false,
-            "requiredAck": true,
-            "isOTACommand": false
-        },
-        {
-            "name": "drop_pose_show",
-            "command": "drop_pose_show",
-            "requiredParam": false,
-            "requiredAck": true,
-            "isOTACommand": false
-        },
-        {
-            "name": "drop_pose_reset",
-            "command": "drop_pose_reset",
+            "name": "calibrate_offset",
+            "command": "calibrate_offset",
             "requiredParam": false,
             "requiredAck": true,
             "isOTACommand": false
@@ -826,6 +742,13 @@
             "isOTACommand": false
         },
         {
+            "name": "camera_settings_reset",
+            "command": "camera_settings_reset",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
             "name": "camera_settings_show",
             "command": "camera_settings_show",
             "requiredParam": false,
@@ -833,8 +756,22 @@
             "isOTACommand": false
         },
         {
-            "name": "camera_settings_reset",
-            "command": "camera_settings_reset",
+            "name": "drop_pose_reset",
+            "command": "drop_pose_reset",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "drop_pose_show",
+            "command": "drop_pose_show",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "hold_pose",
+            "command": "hold_pose",
             "requiredParam": false,
             "requiredAck": true,
             "isOTACommand": false
@@ -847,15 +784,92 @@
             "isOTACommand": false
         },
         {
-            "name": "hold_pose",
-            "command": "hold_pose",
+            "name": "scan_poses_reset",
+            "command": "scan_poses_reset",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "scan_poses_show",
+            "command": "scan_poses_show",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "set_mode",
+            "command": "set_mode",
+            "requiredParam": true,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "set_mode_asl",
+            "command": "set_mode_asl",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "set_mode_ball",
+            "command": "set_mode_ball",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "set_mode_pickplace",
+            "command": "set_mode_pickplace",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "set_mode_yolo_ball",
+            "command": "set_mode_yolo_ball",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "set_mode_yolo_pickplace",
+            "command": "set_mode_yolo_pickplace",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "stop_calibration",
+            "command": "stop_calibration",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "stop_demo",
+            "command": "stop_demo",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "teach_drop_pose",
+            "command": "teach_drop_pose",
+            "requiredParam": false,
+            "requiredAck": true,
+            "isOTACommand": false
+        },
+        {
+            "name": "teach_scan_pose",
+            "command": "teach_scan_pose",
             "requiredParam": false,
             "requiredAck": true,
             "isOTACommand": false
         }
     ],
     "messageVersion": "2.1",
-    "msgCode": "XG4EVRY",
+    "msgCode": "XG4EIE3",
     "capability": "0",
     "enableCSR": "false",
     "c2dOnDemand": 0,
@@ -863,6 +877,9 @@
         "description": null,
         "dataFrequency": "5",
         "fileSupport": false,
+        "videoStreamResource": "2",
+        "videoStreamType": "2",
+        "autoStartVideoStream": false,
         "certRenewalDay": 0,
         "enableCSR": false
     },

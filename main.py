@@ -16,11 +16,17 @@ import subprocess
 import sys
 import threading
 import time
+import traceback
+import warnings
 from collections import deque
 from dataclasses import asdict
 from datetime import datetime
 
+# Suppress google-crc32c pure-Python fallback warning emitted by boto3
+warnings.filterwarnings("ignore", category=RuntimeWarning, module="google_crc32c")
+
 import cv2
+import numpy as np
 
 import camera_settings as cam_settings
 import scan_poses_store
@@ -28,6 +34,13 @@ import systemdata
 import xarm
 
 from modes import make_mode
+
+try:
+    import app_webrtc
+    WEBRTC_AVAILABLE = True
+except ImportError:
+    app_webrtc = None
+    WEBRTC_AVAILABLE = False
 
 try:
     from avnet.iotconnect.sdk.lite import Client, DeviceConfig, Callbacks, DeviceConfigError
@@ -66,38 +79,56 @@ ACTION_LABELS = {
     'demo_pickup': "Demo: Pick & Place",
 }
 
-HOME_POSITIONS = [[1, 500], [2, 500], [3, 500], [4, 500], [5, 500], [6, 500]]
+HOME_POSITIONS = [[1, 365], [2, 503], [3, 300], [4, 900], [5, 750], [6, 500]]
 
 # Scripted demo sequences. Each item is (positions, duration_ms).
 # Every sequence must end at HOME_POSITIONS so the next action starts from a known pose.
 DEMO_SEQUENCES = {
     'demo_wave': [
-        ([[5, 250], [4, 250], [3, 500], [2, 500]], 1500),
-        ([[2, 300]], 350),
-        ([[2, 700]], 350),
-        ([[2, 300]], 350),
-        ([[2, 700]], 350),
-        ([[2, 500]], 350),
+        ([[5, 250], [4, 250], [3, 500], [2, 500], [6, 250]], 1500),
+        ([[2, 300], [6, 350]], 350),
+        ([[2, 700], [6, 450]], 350),
+        ([[2, 300], [6, 550]], 350),
+        ([[2, 700], [6, 650]], 350),
+        ([[2, 500], [6, 750]], 350),
         (HOME_POSITIONS, 1500),
     ],
     'demo_bow': [
-        ([[5, 700], [4, 600], [3, 600]], 1500),
-        ([[5, 700]], 800),
-        (HOME_POSITIONS, 1500),
+        ([[5, 450], [4, 850], [3, 250], [6, 600]], 1500),
+        ([[5, 450]], 800),
+        ([[5, 500], [4, 500], [3, 500], [6, 400]], 1500),
+        (HOME_POSITIONS, 600),
     ],
     'demo_stretch': [
-        ([[5, 150], [4, 500], [3, 500], [2, 500]], 1800),
-        ([[3, 350]], 800),
-        ([[3, 650]], 800),
-        ([[3, 500]], 400),
+        ([[5, 763], [4, 763], [3, 700], [2, 500]], 1800),
+        ([[2, 650], [1, 100]], 800),
+        ([[2, 350], [1, 650]], 800),
+        ([[2, 650], [1, 100]], 800),
+        ([[2, 350], [1, 650]], 800),
+        ([[2, 500], [1, 500]], 400),
         (HOME_POSITIONS, 1800),
     ],
     'demo_scan': [
-        ([[5, 350], [4, 400], [3, 500]], 1200),
-        ([[6, 100]], 1500),
-        ([[6, 900]], 2500),
-        ([[6, 500]], 1200),
-        (HOME_POSITIONS, 1200),
+        # Move to scan start: camera aimed at near edge of table, base at left strip
+        ([[5, 476], [4, 612], [3, 428], [6, 350]], 1500),
+        # Line 1 (near→far)
+        ([[5, 326], [4, 802], [3, 338]], 5000),
+        ([[6, 410]], 1800),
+        # Line 2 (far→near)
+        ([[5, 476], [4, 612], [3, 428]], 5000),
+        ([[6, 470]], 1800),
+        # Line 3 (near→far)
+        ([[5, 326], [4, 802], [3, 338]], 5000),
+        ([[6, 530]], 1800),
+        # Line 4 (far→near)
+        ([[5, 476], [4, 612], [3, 428]], 5000),
+        ([[6, 590]], 1800),
+        # Line 5 (near→far)
+        ([[5, 326], [4, 802], [3, 338]], 5000),
+        ([[6, 650]], 1800),
+        # Line 6 (far→near)
+        ([[5, 476], [4, 612], [3, 428]], 5000),
+        (HOME_POSITIONS, 1500),
     ],
     'demo_shake_no': [
         ([[5, 300], [4, 350]], 1200),
@@ -111,13 +142,12 @@ DEMO_SEQUENCES = {
     ],
     'demo_pickup': [
         ([[1, 100]], 600),
-        ([[5, 750], [4, 650], [3, 550], [6, 500]], 1800),
+        ([[5, 337], [4, 767], [3, 443], [6, 500]], 1800),
         ([[1, 650]], 700),
-        ([[5, 300], [4, 400]], 1500),
-        ([[6, 200]], 1500),
-        ([[5, 750], [4, 650]], 1500),
-        ([[1, 100]], 600),
-        ([[5, 300], [4, 400]], 1200),
+        ([[5, 420], [4, 600]], 1000),
+        ([[6, 250]], 1200),
+        ([[5, 337], [4, 767], [3, 443]], 1500),
+        ([[1, 100]], 500),
         (HOME_POSITIONS, 1500),
     ],
 }
@@ -153,6 +183,14 @@ iotc_warning_flags = {
     'sdk_missing': False,
     'not_connected': False,
 }
+
+# WebRTC streaming state — only active when --webrtc flag is passed
+_webrtc_enabled = False
+_webrtc_frame_queue = queue.Queue(maxsize=1)
+_webrtc_thread = None
+_stream_active = False
+_kvs_client = None
+_kvs_refresh_started = False
 
 
 # ---------------------------------------------------------------------------
@@ -324,7 +362,101 @@ def iotc_on_command(msg):
 
 
 def iotc_on_disconnect(reason: str, disconnected_from_server: bool):
+    global _stream_active
     print(f"IoTConnect disconnected ({'server' if disconnected_from_server else 'client'}): {reason}")
+    if _webrtc_enabled and _stream_active:
+        print("Stopping WebRTC stream due to disconnect...")
+        _stream_active = False
+
+
+def check_and_refresh_credentials(kvs_client):
+    if kvs_client is not None and kvs_client.get_secs_to_expiry() < 60:
+        print("Refreshing KVS credentials...")
+        creds = kvs_client.obtain_credentials()
+        if WEBRTC_AVAILABLE and app_webrtc.webrtc_client is not None:
+            app_webrtc.webrtc_client.refresh_credentials(
+                creds.access_key_id,
+                creds.secret_access_key,
+                creds.session_token
+            )
+
+
+def on_video_stream(kvs_client):
+    global _webrtc_thread, _stream_active
+
+    if kvs_client.is_streaming():
+        print("Starting WebRTC video stream...")
+        try:
+            check_and_refresh_credentials(kvs_client)
+            creds = kvs_client.get_credentials()
+            if creds is None:
+                print("Failed to get AWS credentials for WebRTC stream")
+                return
+
+            channel_arn = kvs_client.get_signaling_channel_arn()
+            if not channel_arn:
+                print("No KVS signaling channel ARN available.")
+                print("Ensure the device is created with the 'robarmwebrtc' template.")
+                return
+
+            if not WEBRTC_AVAILABLE:
+                print("WebRTC not available: app_webrtc module could not be imported.")
+                return
+
+            _stream_active = True
+
+            if _webrtc_thread is None or not _webrtc_thread.is_alive():
+                _webrtc_thread = threading.Thread(
+                    target=app_webrtc.start_webrtc,
+                    args=(
+                        "us-east-1",
+                        channel_arn,
+                        creds.access_key_id,
+                        creds.secret_access_key,
+                        creds.session_token,
+                        _webrtc_frame_queue
+                    ),
+                    daemon=True
+                )
+                _webrtc_thread.start()
+
+            print("WebRTC stream started successfully")
+        except Exception as e:
+            print(f"Error starting WebRTC stream: {e}")
+            traceback.print_exc()
+            _stream_active = False
+    else:
+        print("Stopping WebRTC video stream...")
+        _stream_active = False
+
+
+def _kvs_credential_refresh_loop():
+    while True:
+        time.sleep(10)
+        if _kvs_client is not None:
+            try:
+                check_and_refresh_credentials(_kvs_client)
+            except Exception as e:
+                print(f"[kvs] credential refresh error: {e}")
+
+
+def _webrtc_push_loop(cam, stop_event):
+    """Push camera frames to the WebRTC queue at ~15 fps on a dedicated thread."""
+    interval = 1.0 / 15.0
+    while not stop_event.is_set():
+        t0 = time.perf_counter()
+        if _stream_active:
+            frame = cam.read()
+            if frame is not None:
+                try:
+                    yuv = cv2.cvtColor(frame, cv2.COLOR_BGR2YUV_I420)
+                    _webrtc_frame_queue.put_nowait(yuv)
+                except queue.Full:
+                    pass
+        elapsed = time.perf_counter() - t0
+        remaining = interval - elapsed
+        if remaining > 0:
+            time.sleep(remaining)
 
 
 def _init_iotconnect_client():
@@ -351,11 +483,35 @@ def _init_iotconnect_client():
         )
 
         print('Device Config', config)
-        callbacks = Callbacks(command_cb=iotc_on_command, disconnected_cb=iotc_on_disconnect)
+        if _webrtc_enabled:
+            callbacks = Callbacks(
+                command_cb=iotc_on_command,
+                disconnected_cb=iotc_on_disconnect,
+                vs_cb=on_video_stream,
+            )
+        else:
+            callbacks = Callbacks(command_cb=iotc_on_command, disconnected_cb=iotc_on_disconnect)
         iotc_publisher = Client(config=config, callbacks=callbacks)
         iotc_publisher.connect()
         iotc_warning_flags['not_connected'] = False
         print('IOTCONNECT client connected')
+
+        if _webrtc_enabled:
+            global _kvs_client, _kvs_refresh_started
+            _kvs_client = iotc_publisher.get_kvs_client()
+            if _kvs_client is not None:
+                _kvs_client.obtain_credentials()
+                print(f"KVS WebRTC streaming enabled")
+                print(f"  Signaling channel ARN: {_kvs_client.get_signaling_channel_arn()}")
+                print(f"  Auto-start: {_kvs_client.is_auto_start()}")
+                if not _kvs_refresh_started:
+                    _kvs_refresh_started = True
+                    threading.Thread(target=_kvs_credential_refresh_loop, daemon=True).start()
+                if _kvs_client.is_auto_start():
+                    print("Auto-starting WebRTC stream in 3 seconds...")
+                    threading.Timer(3.0, lambda: on_video_stream(_kvs_client)).start()
+            else:
+                print("KVS WebRTC streaming not enabled for this device template")
     except Exception as e:
         iotc_warning_flags['not_connected'] = True
         print(f'Warning: Failed to initialize IoTConnect client: {e}.')
@@ -821,13 +977,19 @@ def _send_iotconnect_telemetry(payload: dict):
         return
 
     if iotc_publisher is None or not iotc_publisher.is_connected():
-        if not iotc_warning_flags['not_connected']:
-            print('Warning: IoTConnect client not connected.')
-            iotc_warning_flags['not_connected'] = True
-        return
+        for _ in range(5):
+            time.sleep(0.2)
+            if iotc_publisher is not None and iotc_publisher.is_connected():
+                break
+        else:
+            if not iotc_warning_flags['not_connected']:
+                print('Warning: IoTConnect client not connected.')
+                iotc_warning_flags['not_connected'] = True
+            return
 
     try:
         iotc_publisher.send_telemetry(payload)
+        iotc_warning_flags['not_connected'] = False
     except Exception as e:
         print(f'IoTConnect telemetry publish error: {e}')
 
@@ -961,13 +1123,13 @@ def execute_arm_action(arm, action_name, command_args=None):
     elif action_name == 'close_gripper':
         arm.setPosition(1, clamp_position(arm.getPosition(1) + 100), duration=1000, wait=True)
     elif action_name == 'advance':
-        arm.setPosition(5, clamp_position(arm.getPosition(5) + 100), duration=1500, wait=True)
-    elif action_name == 'backup':
         arm.setPosition(5, clamp_position(arm.getPosition(5) - 100), duration=1500, wait=True)
+    elif action_name == 'backup':
+        arm.setPosition(5, clamp_position(arm.getPosition(5) + 100), duration=1500, wait=True)
     elif action_name == 'left':
-        arm.setPosition(6, clamp_position(arm.getPosition(6) - 100), duration=1500, wait=True)
-    elif action_name == 'right':
         arm.setPosition(6, clamp_position(arm.getPosition(6) + 100), duration=1500, wait=True)
+    elif action_name == 'right':
+        arm.setPosition(6, clamp_position(arm.getPosition(6) - 100), duration=1500, wait=True)
     elif action_name == 'up':
         arm.setPosition(4, clamp_position(arm.getPosition(4) - 100), duration=1500, wait=True)
     elif action_name == 'down':
@@ -1087,6 +1249,11 @@ def run_mode(arm, mode, camera_index=2, frame_w=640, frame_h=480,
         except Exception as e:
             print(f"[WARN] web view failed to start on port {web_port}: {e}")
 
+    _webrtc_push_stop = threading.Event()
+    if _webrtc_enabled:
+        threading.Thread(target=_webrtc_push_loop, args=(cam, _webrtc_push_stop),
+                         daemon=True, name="webrtc-push").start()
+
     _current_mode = mode
     mode.setup(arm)
 
@@ -1155,6 +1322,7 @@ def run_mode(arm, mode, camera_index=2, frame_w=640, frame_h=480,
                 t_cap_sum = t_proc_sum = t_total_sum = 0.0
                 t_window_start = time.time()
     finally:
+        _webrtc_push_stop.set()
         mode.teardown(arm)
         cam.release()
         if not headless:
@@ -1184,11 +1352,17 @@ def parse_args():
                              f"Valid names: {cam_settings.known_setting_names()}. "
                              "Cloud commands camera_setting/camera_settings_show/camera_settings_reset "
                              "edit this file at runtime.")
+    parser.add_argument('--webrtc', action='store_true',
+                        help="Enable KVS WebRTC video streaming (requires robarmwebrtc device template)")
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
+    global _webrtc_enabled
+    _webrtc_enabled = args.webrtc
+    if _webrtc_enabled:
+        print("WebRTC streaming: ENABLED (--webrtc)")
     if args.camera is None:
         detected = cam_settings.find_brio_index(fallback=2)
         print(f"[main] --camera not specified -> auto-detected /dev/video{detected}")

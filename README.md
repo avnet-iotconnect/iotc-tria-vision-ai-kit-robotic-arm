@@ -81,11 +81,11 @@ to register this board in IOTCONNECT and drop the resulting
 project root. Once placed, all three demos publish telemetry and accept remote
 commands automatically.
 
-> **Template note (demo #3):** This repo uses IoTConnect device template
-> `robArm5` (`robArm2_template.json`). If your board was previously onboarded
-> with the older `robarmRTC` template, re-onboard it to `robArm5` before cloud
-> commands (`set_mode`, `calibrate`, etc.) will work. Positional move commands
-> are unchanged and backward-compatible.
+> **Template note:** This repo ships two device templates:
+> - `robarmwebrtc-template.json` — use this if you want **live WebRTC video streaming** from the wrist camera to the IOTCONNECT portal. During device creation select **WebRTC** as the Stream Resource.
+> - Standard template — use the default IOTCONNECT onboarding flow if you don't need WebRTC streaming.
+>
+> Devices created with `robarmwebrtc-template.json` can enable streaming with `--webrtc`. Devices created without it work normally without the flag. The stream-resource choice cannot be changed after device creation — if needed, create a new device.
 
 ---
 
@@ -540,6 +540,36 @@ retraining the YOLO model from scratch on your own ball: image capture on the
 board, HSV auto-labelling, labelImg review, train/val split, Colab YOLOv8n
 training, INT8 TFLite export, and NPU deployment. Start there if the bundled
 model doesn't recognize your specific ball.
+
+---
+
+## Live WebRTC Video Streaming (Optional)
+
+Any demo can stream the wrist-camera feed live to the IOTCONNECT portal using
+AWS Kinesis Video Streams (KVS) WebRTC. This is entirely opt-in and does not
+affect vision or arm control when unused.
+
+### Prerequisites
+
+Your device **must** be created in IOTCONNECT using the `robarmwebrtc`
+template (`robarmwebrtc-template.json` in this repo). During device creation,
+when prompted to select a **Stream Resource**, choose **WebRTC**. This choice
+cannot be changed after device creation — if your device was created with a
+different template, create a new one.
+
+### Enabling WebRTC Streaming
+
+Add the `--webrtc` flag when launching any demo:
+
+```bash
+python3 main.py --mode ball --webrtc
+# or headless over SSH:
+python3 main.py --mode asl --webrtc --headless
+```
+
+When connected, the stream appears in the IOTCONNECT portal under your device's
+live view. The wrist-camera feed updates at ~15 fps independent of the main
+vision loop so arm moves don't stall the stream.
 
 ---
 
