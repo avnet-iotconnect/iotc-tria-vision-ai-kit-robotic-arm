@@ -9,7 +9,7 @@ non-textured, soft/dark images, etc.) and you need a custom-trained model.
 
 ---
 
-## 1. What you're building, and why this stack
+## 1. What You're Building, and Why This Stack
 
 The board runs neural inference through a Qualcomm GStreamer pipeline using a
 **TFLite (INT8 w8a8) model + the QNN external delegate** on the Hexagon HTP.
@@ -57,13 +57,13 @@ One-time install on the board (needs internet):
 
 ---
 
-## 3. End-to-end procedure
+## 3. End-to-End Procedure
 
 All commands below assume the project lives at:
 - **Dev box:** `c:\dev\robotic-arm\iotc-tria-vision-ai-kit-robotic-arm\`
 - **Board:**   `/var/roothome/iotc-tria-vision-ai-kit-robotic-arm/` (= `~` for root)
 
-### Step 1 — Capture training images on the board
+### Step 1 — Capture Training Images on the Board
 
 The wrist camera is mounted on the arm, so you need both to **release servo
 torque to position it by hand** *and* to **start/pause captures** while you move
@@ -88,7 +88,7 @@ Output: `dataset/images/*.jpg` on the board. The script applies the same
 `camera_settings.json` the runtime app uses so the training distribution matches
 inference.
 
-### Step 2 — Pull captured images to the dev box
+### Step 2 — Pull Captured Images to the Dev Box
 
 ```bash
 # From the dev box
@@ -108,7 +108,7 @@ EOF
 (Confirm the board's current IP first — DHCP can move it. `ifconfig eth1` on the
 board.)
 
-### Step 3 — Auto-label with HSV
+### Step 3 — Auto-Label With HSV
 
 [`autolabel_hsv.py`](autolabel_hsv.py) generates **draft YOLO boxes** by color
 detection. Run it **on the board** (board has `cv2`; dev box typically doesn't):
@@ -142,7 +142,7 @@ precision (no hand boxes; manually add the dim balls that get missed). The
 shipped script prioritizes recall (`v_min=158`) — adjust `ORANGE["v"]` if you
 prefer the other tradeoff.
 
-### Step 4 — Review/correct labels in labelImg
+### Step 4 — Review/Correct Labels in labelImg
 
 ```powershell
 # PowerShell — use Python 3.10 (labelImg breaks on 3.13)
@@ -156,7 +156,7 @@ In labelImg: **Open Dir** → `dataset\images`, **Change Save Dir** → `dataset
 toggle format to **YOLO**, **View → Auto Save Mode**. Drafts load as editable
 boxes; saving overwrites that one file with whatever's on screen.
 
-#### labelImg PyQt5 crash workarounds — REQUIRED on modern PyQt5
+#### labelImg PyQt5 Crash Workarounds — Required on Modern PyQt5
 
 Recent PyQt5 builds enforce strict `int` arg types; labelImg passes floats and
 crashes. Patch by wrapping the offending coords in `int(...)`:
@@ -173,7 +173,7 @@ crashes. Patch by wrapping the offending coords in `int(...)`:
 If you hit a *new* `argument has unexpected type 'float'` error from another
 file/line, it's the same one-line fix.
 
-#### What to actually look for during review
+#### What to Actually Look for During Review
 
 1. **Empty frames** (red border in the gallery, or just empty `.txt`): if a ball
    is really there but missed (heavy occlusion, partial sliver), draw it. If
@@ -185,14 +185,14 @@ file/line, it's the same one-line fix.
    class 0 too; if blue is your drop *box*, delete those boxes so we don't
    teach the model "box = ball".
 
-#### Visual review without labelImg (read-only)
+#### Visual Review Without labelImg (Read-Only)
 
 If you just want to scan all annotated frames before/during labeling, generate
 an HTML contact-sheet from the `dataset/preview/` images. There's a one-liner
 in this repo that produces `dataset/review.html` (a thumbnail grid with red
 borders for empty frames; click any image to zoom). Open it in any browser.
 
-### Step 5 — Train/val split + data.yaml
+### Step 5 — Train/Val Split + data.yaml
 
 ```bash
 # On the dev box
@@ -207,7 +207,7 @@ The yaml ([`dataset/data.yaml`](dataset/data.yaml)) has `nc: 1`, `names: [ball]`
 Ultralytics finds each label by replacing `/images/` with `/labels/` in the
 image path.
 
-### Step 6 — Train YOLOv8n in Colab (free GPU)
+### Step 6 — Train YOLOv8n in Colab (Free GPU)
 
 The dev box has no NVIDIA GPU; on-CPU YOLOv8n training of ~400 imgs would take
 hours, vs ~10–20 min on a Colab T4.
@@ -243,14 +243,14 @@ hours, vs ~10–20 min on a Colab T4.
    ours hit mAP50 = 0.988, mAP50-95 = 0.918. Significantly below ~0.9 means
    the labels need another pass.
 
-#### Notebook gotchas if you regenerate it
+#### Notebook Gotchas If You Regenerate It
 - Build the notebook from `gen_notebook.py` (a real .py file), **not** from
   `python -c "..."` in a shell — bash double-quote layers eat one backslash and
   turn `\\n` into a real newline inside a Python string literal, breaking the
   `data.yaml`-writing cell. The shipped `gen_notebook.py` uses triple-quoted
   YAML blocks to dodge the issue entirely.
 
-### Step 7 — Export INT8 (w8a8) TFLite from Colab
+### Step 7 — Export INT8 (w8a8) TFLite From Colab
 
 After training, run **one more Colab cell** to convert `ball_best.pt` to a
 calibrated INT8 TFLite:
@@ -283,7 +283,7 @@ runs efficiently.
 
 Download it from Drive into the project as **`model/ball_best.tflite`**.
 
-### Step 8 — Push the model to the board, NPU spike
+### Step 8 — Push the Model to the Board, NPU Spike
 
 ```bash
 # Push the model
@@ -333,7 +333,7 @@ INT8 export isn't HTP-friendly for some op — the fallback path is **Qualcomm
 AI Hub** (`pip install qai-hub` + an account/token), which produces an
 HTP-optimized w8a8 TFLite from the same `ball_best.pt`.
 
-### Step 9 — Add YOLOv8 decode to the detector
+### Step 9 — Add YOLOv8 Decode to the Detector
 
 The shipped [`detectors/yolo_detector.py`](detectors/yolo_detector.py) handles
 the YOLO-X output (3 pre-decoded tensors). The ultralytics-exported model
@@ -354,7 +354,7 @@ A simple way to switch: pick the decoder based on `len(self.out)`:
 - 3 outputs (`boxes`/`scores`/`class_idx`) → YOLO-X path (already there).
 - 1 output of shape `[1, 4+nc, N]` → YOLOv8 path (new branch).
 
-### Step 10 — Run the app with the custom model
+### Step 10 — Run the App With the Custom Model
 
 ```bash
 # On the board
@@ -373,7 +373,7 @@ the right distance.
 
 ---
 
-## 4. File reference
+## 4. File Reference
 
 Capture + dataset:
 - [`capture_dataset.py`](capture_dataset.py) — board capture loop with arm torque + start/pause
@@ -403,7 +403,7 @@ by default; pass `--model model/ball_best.tflite` to use the custom one.
 
 ---
 
-## 5. Known gotchas / lessons learned
+## 5. Known Gotchas / Lessons Learned
 
 - **Board IP moves** between sessions (DHCP). The Wi-Fi network's `/22` netmask
   means addresses like `.57`, `.144`, `.145` are all on the same subnet — ping
@@ -432,7 +432,7 @@ by default; pass `--model model/ball_best.tflite` to use the custom one.
 
 ---
 
-## 6. Status of this guide
+## 6. Status of This Guide
 
 Verified end-to-end (mAP50 0.988, mAP50-95 0.918 on val; live ball detected at conf 0.92):
 - Capture / pull / auto-label / labelImg review / split / Colab train / Colab INT8 export.

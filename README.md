@@ -33,15 +33,15 @@ showing classical CV vs. NPU-accelerated deep learning side by side.
 
 ---
 
-## First-time setup
+## First-Time Setup
 
-### 1. Board bring-up
+### 1. Board Bring-Up
 
 1. Power up the board (12 VDC via USB-C #1), hold S1 for 2–3 seconds.
 2. Find its IP (DHCP) — connect a monitor, or check your router's lease table.
 3. SSH in: `ssh root@<board-ip>` (password `oelinux123`).
 
-### 2. Clone + Python environment
+### 2. Clone + Python Environment
 
 ```bash
 cd ~
@@ -61,7 +61,7 @@ pip3 install -r requirements.txt
 pip3 install -r requirements-yolo.txt
 ```
 
-### 3. ASL model weights (demo #1 only)
+### 3. ASL Model Weights (Demo #1 Only)
 
 The PointNet classifier weights are not bundled in the repo. Download them once:
 
@@ -72,7 +72,7 @@ ls -lh model/point_net_1.pth   # should be ~38–42 MB
 
 Demo #1 will refuse to start with a clear error if this file is absent.
 
-### 4. IOTCONNECT onboarding
+### 4. IOTCONNECT Onboarding
 
 Follow the
 [device onboarding guide](https://github.com/avnet-iotconnect/iotc-python-lite-sdk-demos/blob/main/common/general-guides/UI-ONBOARD.md)
@@ -87,14 +87,6 @@ commands automatically.
 > commands (`set_mode`, `calibrate`, etc.) will work. Positional move commands
 > are unchanged and backward-compatible.
 
-### 5. Sanity-check the hardware
-
-```bash
-lsusb | grep 0483:5750     # should show the xArm
-v4l2-ctl --list-devices    # should list the wrist camera
-ifconfig eth1              # should show an IPv4 address
-```
-
 ---
 
 ## Demo 1 — ASL Gesture Control (`--mode asl`)
@@ -107,7 +99,7 @@ Demonstrates **on-board hand tracking (MediaPipe) + landmark classification
 **Best for:** showing the kit running a useful, end-user-facing AI experience
 with no labelled data and no per-site calibration.
 
-### Camera setup
+### Camera Setup
 
 **Placement.** Use any operator-facing USB UVC camera — not the wrist-mount used
 by demos #2 and #3. The wrist-mounted Brio can double as the operator-facing
@@ -131,7 +123,7 @@ explicitly:
 ./start.sh --mode asl --camera N
 ```
 
-### Running the demo
+### Running the Demo
 
 ```bash
 ./start.sh --mode asl                                        # local monitor
@@ -162,7 +154,7 @@ excluding J and Z which require motion). Every frame is classified into one of
 these 24 letters — only the mapped letters in the table below trigger arm
 commands. Unmapped letters appear in the overlay without an action label.
 
-### Gesture mapping
+### Gesture Mapping
 
 | Hand | Sign | Arm action |
 |------|------|------------|
@@ -199,20 +191,6 @@ Sent on every gesture-triggered arm action and every 5 seconds while running.
 If fields are missing from the IOTCONNECT dashboard, verify they are declared on
 the device template — the broker silently drops undeclared attributes.
 
-### Troubleshooting — ASL
-
-| Symptom | Fix |
-|---------|-----|
-| Demo crashes at startup / `point_net_1.pth` missing | Run `source model/get_model.sh` (one-time, ~40 MB) |
-| No hand detected, no overlay, arm never moves | Check lighting; verify camera faces operator; confirm index with `v4l2-ctl --list-devices` |
-| Wrong letter / jittery recognition | Move closer (1.5–2 ft); use plain background; hold sign steady |
-| Letter shown but arm doesn't move | Only mapped letters trigger actions — confirm `[action label]` appears under the letter; check `lsusb \| grep 0483:5750` |
-| Arm moves the wrong direction | Adjust `LEFT_GESTURE_TO_ACTION` in `modes/asl.py` |
-| Same command fires repeatedly | Classifier flickering — move closer or improve background uniformity |
-| Qt platform plugin crash over SSH | Add `--headless --web-port 8080` |
-| IOTCONNECT not receiving telemetry | Check certs in project root; `ping 8.8.8.8` |
-| Stuck process | `pkill -9 -f main.py` |
-
 ---
 
 ## Demo 2 — HSV Pick-and-Place (`--mode ball` / `--mode pickplace`)
@@ -234,7 +212,7 @@ demo #3 meaningful.
 recalibration; can't distinguish a colored ball from a similarly-colored
 backdrop.
 
-### One-time calibration (per site / per ball / per lighting)
+### One-Time Calibration (Per Site / Per Ball / Per Lighting)
 
 Three pieces of calibration data are required. Capture them in order — each
 step writes a JSON file the next may depend on.
@@ -243,7 +221,7 @@ step writes a JSON file the next may depend on.
 > can free-pose the arm to aim the wrist camera. **Always support the arm before
 > pressing Enter**, especially on a wall- or ceiling-mounted arm.
 
-#### 2a. Ball HSV thresholds — `ball_calibrate.py`
+#### 2a. Ball HSV Thresholds — `ball_calibrate.py`
 
 ```bash
 ./calibrate.sh
@@ -258,7 +236,7 @@ python3 ball_calibrate.py [--camera N]
 4. `s` = save → writes `ball_color.json`
    `r` = reset samples  `q`/ESC = quit without saving.
 
-#### 2b. Scan poses — `teach_pose.py`
+#### 2b. Scan Poses — `teach_pose.py`
 
 Captures the arm poses cycled through while the camera sweeps for the ball.
 
@@ -276,7 +254,7 @@ python3 teach_pose.py
 4. `h` = re-enable torque (do this before letting go!).
 5. Repeat for each pose; `q` to quit.
 
-#### 2c. Drop box HSV thresholds — `ball_calibrate.py` (pickplace only)
+#### 2c. Drop Box HSV Thresholds — `ball_calibrate.py` (Pickplace Only)
 
 ```bash
 python3 ball_calibrate.py --output box_color.json [--camera N]
@@ -285,7 +263,7 @@ python3 ball_calibrate.py --output box_color.json [--camera N]
 Same UI as ball-color calibration. Click on the drop box in the live preview.
 The pickplace mode reads `box_color.json` to find and approach the drop target.
 
-#### 2d. Camera-gripper offset — `calibrate_cam_offset.py` (optional)
+#### 2d. Camera-Gripper Offset — `calibrate_cam_offset.py` (Optional)
 
 Skip unless the gripper consistently closes next to the ball rather than on it.
 
@@ -302,7 +280,7 @@ python3 calibrate_cam_offset.py [--camera N]
    to paste into `modes/ball_follow.py`.
 4. `h` = re-enable torque, `q` = quit.
 
-### Running the demo
+### Running the Demo
 
 ```bash
 # Ball-follow only (no drop phase):
@@ -323,7 +301,7 @@ mode) or carries the ball to the taught box position and releases (pickplace
 mode). Open the gripper manually or via the `open_gripper` cloud command to
 re-arm the cycle.
 
-### State machine
+### State Machine
 
 ```
 IDLE      → SCANNING                               (immediately at launch)
@@ -339,7 +317,7 @@ HOLDING   → IDLE                                  (gripper opened by user or I
 detection drop-outs from clipping or HSV flicker, instead of bouncing back to
 SCAN every time the ball flickers off for a frame.
 
-### Key tuning constants (`modes/ball_follow.py`)
+### Key Tuning Constants (`modes/ball_follow.py`)
 
 | Constant | Default | Notes |
 |----------|---------|-------|
@@ -377,20 +355,6 @@ Each payload (sent every ~2 s) carries:
 | `ballTrack.no_ball_frames` | Consecutive frames without a detection |
 | `ballTrack.pred_frames_left` | Extrapolation budget remaining |
 
-### Troubleshooting — HSV
-
-| Symptom | Fix |
-|---------|-----|
-| Gripper closes next to the ball, not on it | Run `calibrate_cam_offset.py`; paste `CAM_GRIPPER_OFFSET_X/_Y` into `modes/ball_follow.py` |
-| Arm finds ball but shakes without grabbing | P commands below static friction — ensure `MIN_TRIM_STEP` ≥ 8 and `MIN_TRIM_STEP_PAN` ≥ 18 |
-| Arm centers but never descends | Raise `APPROACH_STEP`; at extended poses (shoulder_lift > 600) the lift servo needs ≥12-unit commands |
-| Arm bounces between TRACKING and SCAN | Raise `NO_BALL_GRACE_FRAMES`; re-run `ball_calibrate.py` under actual lighting |
-| Arm drives away from the ball | Flip `PAN_DIR`, `TILT_DIR`, or `TILT_ELBOW_DIR` in `modes/ball_follow.py` |
-| Gripper closes too early (above ball) | `TARGET_RADIUS_PX` too low — watch OSD `r=` at intended grab moment and set to that value |
-| `ball_color.json` not found | Run `ball_calibrate.py` first |
-| Pickplace can't find the drop box | Run `ball_calibrate.py --output box_color.json` with the box in view |
-| Stuck process | `pkill -9 -f main.py` |
-
 ---
 
 ## Demo 3 — YOLO + Depth Pick-and-Place (`--mode yolo-pickplace`)
@@ -415,22 +379,7 @@ scene-specific). Also requires a captured + labelled dataset and one-time INT8
 TFLite conversion for a custom YOLO model (see
 [`CUSTOM_NPU_DETECTOR.md`](CUSTOM_NPU_DETECTOR.md)).
 
-### Pre-flight checks
-
-```bash
-ifconfig eth1                                   # current board IP (DHCP)
-v4l2-ctl --list-devices                         # find the Brio 100 node pair
-v4l2-ctl --device=/dev/videoN --list-ctrls      # the node listing saturation
-                                                # and exposure controls IS the
-                                                # capture node
-lsusb | grep 0483:5750                          # confirm xArm enumerated
-```
-
-Note the `/dev/videoN` index. **The Brio's index can shift after a USB reset —
-do not assume `--camera 2`.** Always re-check with `v4l2-ctl --list-devices`
-after any reconnect.
-
-### Per-site re-teaching
+### Per-Site Re-Teaching
 
 Same ball + same arm + new room = a few things need re-teaching. MiDaS depth
 values, HSV thresholds for the drop box, and arm-relative scene geometry are all
@@ -444,7 +393,7 @@ site-dependent.
 | `box_color.json` | Only if drop box or lighting changed | `python3 ball_calibrate.py --output box_color.json --camera N` |
 | `camera_settings.json` | Only if lighting is very different | Re-run the exposure/WB lock script |
 
-#### Re-teaching D_grab (required at every new site)
+#### Re-Teaching D_grab (Required at Every New Site)
 
 MiDaS depth values are scene-specific — the same physical grab pose can read
 100+ units differently across lighting conditions and camera enumerations.
@@ -480,7 +429,7 @@ cat grab_depth.json
 `D_stdev` should be roughly 10–30, **not 0**. If it's 0, redo the snapshot
 before pressing `h`.
 
-### Running the demo
+### Running the Demo
 
 **Option A — unified launcher (recommended, opinionated defaults):**
 ```bash
@@ -529,7 +478,7 @@ The grab fires when `center=OK` AND settle reaches 3/3 (`DEPTH_SETTLE_FRAMES`
 consecutive in-window frames). Closer-than-taught still counts as OK — the gate
 is a floor, not a window.
 
-### Control-loop tuning (`modes/yolo_pickplace.py`)
+### Control-Loop Tuning (`modes/yolo_pickplace.py`)
 
 | Constant | Default | Notes |
 |----------|---------|-------|
@@ -539,20 +488,6 @@ is a floor, not a window.
 | `D_EWMA_ALPHA` | 0.25 | EWMA smoothing factor for MiDaS depth. Higher → more responsive; lower → heavier smoothing. 0.25 ≈ 4-frame effective average. |
 | `DEPTH_TOL_FLOOR` | 20 | Minimum effective gate tolerance — protects against pathologically tight teach captures. |
 | `DEPTH_TOL_MULT` | 1.5 | Tolerance multiplier: effective tolerance = `max(FLOOR, MULT × D_stdev_from_teach)`. |
-
-### Diagnostics
-
-```bash
-# Camera works? Detection correct?  (stop demo first to free the camera)
-python3 yolo_selftest.py --model model/ball_best.tflite --camera N --conf 0.5 2>/dev/null
-
-# Demo running — what does inference see right now?
-python3 yolo_diag_stream.py     # pulls from the MJPEG stream — no camera contention
-python3 depth_diag_stream.py    # same for depth
-
-# Depth looks jumpy — is it MiDaS noise or YOLO bbox jitter?
-python3 depth_monitor.py --frames 30
-```
 
 ### Telemetry — YOLO
 
@@ -574,30 +509,9 @@ Note: `sysInfo_gpu` will stay near zero — the workload is on the Hexagon NPU,
 not the Adreno graphics GPU. NPU activity is visible through `yolo_ms` and
 `depth_ms`.
 
-### Troubleshooting — YOLO
-
-| Symptom | Fix |
-|---------|-----|
-| `"could not load grab_depth.json"` / no `"depth gate ARMED"` log | Re-run `./teach_grab.sh`; confirm file exists and `D_stdev` > 0 |
-| Grab fires too early (gripper closes above ball) | Re-teach `grab_depth.json` with gripper closer to ball; or raise `DEPTH_SETTLE_FRAMES` |
-| Grab never fires — `depth=NO` persistently | Descent not reaching taught distance; check for arm saturation at `LIFT_MAX`/`ELBOW_MAX` (look for `[APPROACH-BLOCKED]` in log) |
-| Settle counter never reaches 3 | D bouncing in/out of window — lower `DEPTH_SETTLE_FRAMES` or widen teach tolerance |
-| Pan oscillates many times before grab | Increase `PAN_COOLDOWN_MS` (try 350) |
-| Camera not opening (`--camera 2` fails) | Brio index has shifted — re-run `v4l2-ctl --list-devices` |
-| False positives on bright wall corners | Raise `--conf` to 0.8+; real ball scores >0.9, corner FPs sit 0.5–0.65 |
-| Latency >> 7 ms / `NPU=no` in startup log | Check that `ADSP_LIBRARY_PATH` is set — `start_yolo.sh` and `start.sh` both set it automatically |
-| Heavy QNN stderr spam at startup | Most is silenced internally; for debug: `YOLO_VERBOSE=1 ./start_yolo.sh ...` |
-| Stuck process | `pkill -9 -f yolo_pickplace.py` or `pkill -9 -f main.py` |
-
-**Additional gotchas:**
-- Camera index can drift after USB reset — always re-check with `v4l2-ctl --list-devices` after any reconnect.
-- MiDaS-V2 INT8 has ~20-unit per-frame noise on a static scene. The EWMA smooths this before gating. Treat depth as relative-only, not absolute.
-- Re-teach `D_grab` at every new site — same physical pose reads 100+ units differently across lighting and camera enumerations.
-- Do not run `git` on the board. The on-device git index is out of sync with the working tree. Push files via SFTP from a dev box.
-
 ---
 
-## Remote commands (all modes)
+## Remote Commands (All Modes)
 
 These commands work via IOTCONNECT regardless of which demo is running:
 
@@ -619,30 +533,7 @@ These commands work via IOTCONNECT regardless of which demo is running:
 
 ---
 
-## Choosing a demo
-
-| To show… | Run |
-|----------|-----|
-| Natural human interaction, no setup | Demo 1 — ASL |
-| Clean, reliable autonomous pick on a controlled surface | Demo 2 — HSV pickplace |
-| The NPU doing real work, comparing ML vs. classical CV | Demo 3 — YOLO + depth |
-| The full "evolution" story (classical → ML → ML+depth) | Run #2, then #3 |
-
----
-
-## Cross-cutting troubleshooting
-
-| Symptom | First check |
-|---------|-------------|
-| `lsusb` doesn't show xArm | Power on the arm BEFORE plugging USB; re-plug after powering on |
-| Camera not detected | `v4l2-ctl --list-devices` — note the Brio's current `/dev/videoN` |
-| IOTCONNECT offline | Ethernet up? `ping 8.8.8.8`? Certs in project root? |
-| Demo crashes on Qt platform plugin | Run with `--headless --web-port 8080` over SSH |
-| Stuck process won't quit | `pkill -9 -f main.py` or `pkill -9 -f yolo_pickplace.py` |
-
----
-
-## Custom NPU detector — end-to-end reproduction
+## Custom NPU Detector — End-to-End Reproduction
 
 [`CUSTOM_NPU_DETECTOR.md`](CUSTOM_NPU_DETECTOR.md) covers the full pipeline for
 retraining the YOLO model from scratch on your own ball: image capture on the
