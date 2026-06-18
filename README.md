@@ -14,51 +14,141 @@ different rung of perception sophistication on the same hardware:
 The progression is the demo: same arm, same camera, same cloud platform —
 showing classical CV vs. NPU-accelerated deep learning side by side.
 
+> [!TIP]
+> It is strongly recommended that users complete the [/IOTCONNECT basic quickstart guide for the TRIA VISION AI-KIT 6490](https://github.com/avnet-iotconnect/iotc-python-lite-sdk-demos/tree/main/tria-vision-ai-kit-6490)
+> so they can familiarize themselves with the hardware and the /IOTCONNECT UI before proceeding on to this project.
+
 ---
 
-## Hardware
+## Hardware Requirements
 
-- **[Tria VisionAI-Kit 6490](https://www.newark.com/avnet/sm2-sk-qcs6490-ep6-kit001/dev-kit-64bit-arm-cortex-a55-a78/dp/51AM9843)** — Qualcomm QCS6490 SoC compute platform.
-- **[Hiwonder xArm 1S](https://www.amazon.com/LewanSoul-Programmable-Feedback-Parameter-Programming/dp/B0CHY63V9P)** — 6-DOF arm + gripper, USB.
-- **USB camera**:
-  - For demos #2/#3: mounted on the wrist roll servo (eye-in-hand).
-  - For demo #1: any USB camera facing the operator.
-  - The reference build uses a Logitech Brio 100; any UVC camera works.
-- One yellow practice ball (Nerf Rival Ammo balls work well — small, matte,
-  compress slightly inside the gripper).
-- A target drop box (any small container in a clear color, e.g. blue).
-- USB-C power supply + cable (in kit).
-- Ethernet (or Wi-Fi) for IOTCONNECT.
-- HDMI monitor, USB keyboard, USB mouse — optional but useful for first setup.
+### Included with **[TRIA Vision AI-KIT 6490](https://www.newark.com/avnet/sm2-sk-qcs6490-ep6-kit001/dev-kit-64bit-arm-cortex-a55-a78/dp/51AM9843)**
+- USB-C Cable for flashing and USB-ADB debug (included with kit)
+- USB-C 12VDC Power Supply and Cable (included with kit)
+
+### Purchased Separately
+- **[Hiwonder xArm 1S](https://www.amazon.com/LewanSoul-Programmable-Feedback-Parameter-Programming/dp/B0CHY63V9P?th=1)** — 6-DOF arm + gripper, USB
+- Ethernet Cable
+- **USB camera** — mounted on the wrist roll servo for demos #2/#3 (eye-in-hand);
+  any operator-facing USB camera for demo #1. The reference build uses a
+  Logitech Brio 100; any UVC camera works.
+
+> [!TIP]
+> If possible, it is recommended to use a bare USB-camera PCB module mounted directly
+> behind the gripper jaws, giving the cleanest line of sight to whatever the gripper
+> is about to grab and removing the parallax that makes the camera-gripper offset
+> calibration necessary.
+
+- USB Mouse and Keyboard
+- HDMI Monitor with **active** mini-DP to HDMI adapter
+- One practice ball (Nerf Rival Ammo balls work well — small, matte, compress
+  slightly inside the gripper)
+- A target drop box (any small container in a distinct color, e.g. blue) — for
+  demo #2 pickplace and demo #3
+
+> [!IMPORTANT]
+> The mini-DP to HDMI adapter must be **active**. To avoid purchasing the wrong
+> product it is recommended to use the adapter tested by Avnet's engineer,
+> available [here](https://www.amazon.com/Cable-Matters-DisplayPort-Supporting-Technology/dp/B00PJ3LSIG/).
+
+---
+
+## Hardware Assembly
+
+### Hiwonder XArm 1S Robotic Arm Setup
+
+> [!NOTE]
+> It is assumed that users have purchased the pre-assembled version of the robotic
+> arm. If not, follow Hiwonder's assembly instructions first and then return here.
+
+1. Attach the included suction-cup feet to the base of the arm using the provided
+   hardware as shown below:
+
+<img src="./media/suction-cup-hardware.png">
+
+<img src="./media/suction-cup-assembled.png">
+
+2. Using a strong adhesive (epoxy works well), attach your USB camera to the top of
+   the wrist ("hand") rotational servo motor.
+
+> [!TIP]
+> Prop up the arm with a small box (see image below) and use masking tape to hold
+> the camera in position while the adhesive sets. A "helping hand" soldering arm
+> can also hold the USB cable of the camera for added stability.
+
+<img src="./media/supporting-box.png">
+
+> [!IMPORTANT]
+> Ensure no adhesive drips down into any joints or moving parts.
+
+3. After the adhesive has cured, the final camera mounting should look like this:
+
+<img src="./media/final-camera-mounted.png">
+
+### TRIA Vision AI Kit 6490 Hardware Setup
+
+- Connect 12 VDC USB-C power supply to the USB-C "DC PWR" connector
+- Connect ethernet cable to the board's ethernet port
+- Connect USB mouse and keyboard to USB-A ports
+- Connect a second USB-C cable for USB-ADB communication
+- Connect the USB camera
 
 ---
 
 ## First-Time Setup
 
+> [!NOTE]
+> These steps only need to be performed once. After completing them, see
+> [Starting the Demo](#starting-the-demo) for the commands to run after
+> every reboot.
+
 ### 1. Board Bring-Up
 
-1. Power up the board (12 VDC via USB-C #1), hold S1 for 2–3 seconds.
-2. Find its IP (DHCP) — connect a monitor, or check your router's lease table.
-3. SSH in: `ssh root@<board-ip>` (password `oelinux123`).
+1. **Power On**: Hold the S1 button for 2–3 seconds until the red LED turns off.
+2. **SSH into the board**:
+   ```bash
+   ssh root@<board-ip>
+   ```
+   Login with password `oelinux123`.
 
 ### 2. Clone + Python Environment
 
 ```bash
-cd ~
 git clone https://github.com/avnet-iotconnect/iotc-tria-vision-ai-kit-robotic-arm.git
 cd iotc-tria-vision-ai-kit-robotic-arm
+```
 
-# miniforge (one-time)
+Install Miniforge (conda) — download and run the installer:
+```bash
 wget "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
 bash Miniforge3-$(uname)-$(uname -m).sh
+```
 
-conda create -y -n iotc-tria-xarm python=3.11
+Respond to each prompt as follows:
+- **License agreement**: Press **ENTER** to scroll through, then type `yes` and **ENTER** to accept.
+- **Installation location**: Press **ENTER** to confirm the default path.
+- **Shell initialization**: Type `yes` and **ENTER** when asked `Proceed with initialization?`
+
+Reload your shell so `conda` becomes available:
+```bash
+source ~/.bashrc
+```
+
+The board's login shell does not source `.bashrc` automatically on reboot. Run
+this once to fix that permanently:
+```bash
+echo '. ~/.bashrc' >> ~/.profile
+```
+
+Create the conda environment and install dependencies:
+```bash
+conda create -y -n iotc-tria-xarm python=3.11 pip
 conda activate iotc-tria-xarm
 conda install opencv -c conda-forge
-pip3 install -r requirements.txt
+python -m pip install -r requirements.txt
 
 # Optional: NPU inference dependency (only for demo #3)
-pip3 install -r requirements-yolo.txt
+python -m pip install -r requirements-yolo.txt
 ```
 
 ### 3. ASL Model Weights (Demo #1 Only)
@@ -66,7 +156,7 @@ pip3 install -r requirements-yolo.txt
 The PointNet classifier weights are not bundled in the repo. Download them once:
 
 ```bash
-source model/get_model.sh
+sh model/get_model.sh
 ls -lh model/point_net_1.pth   # should be ~38–42 MB
 ```
 
@@ -74,18 +164,74 @@ Demo #1 will refuse to start with a clear error if this file is absent.
 
 ### 4. IOTCONNECT Onboarding
 
-Follow the
-[device onboarding guide](https://github.com/avnet-iotconnect/iotc-python-lite-sdk-demos/blob/main/common/general-guides/UI-ONBOARD.md)
-to register this board in IOTCONNECT and drop the resulting
-`iotcDeviceConfig.json` + `device-cert.pem` + `device-pkey.pem` into the
-project root. Once placed, all three demos publish telemetry and accept remote
-commands automatically.
+> [!IMPORTANT]
+> If you intend to run this demo with the `--webrtc` flag to enable live video
+> streaming, the device **must** be created in /IOTCONNECT using the `robarmwebrtc`
+> template provided in this repository (`robarmwebrtc-template.json`). During device
+> creation you will be prompted to select a **Stream Resource** — choose **WebRTC**.
+> The /IOTCONNECT backend provisions a KVS WebRTC signaling channel at device
+> creation time and this choice cannot be changed afterward. If your device was
+> already created with a different template or the wrong stream resource, you must
+> create a new device using the `robarmwebrtc` template. Devices created without
+> the `robarmwebrtc` template can still run any demo without the `--webrtc` flag
+> and will not be affected.
 
-> **Template note:** This repo ships two device templates:
-> - `robarmwebrtc-template.json` — use this if you want **live WebRTC video streaming** from the wrist camera to the IOTCONNECT portal. During device creation select **WebRTC** as the Stream Resource.
-> - Standard template — use the default IOTCONNECT onboarding flow if you don't need WebRTC streaming.
->
-> Devices created with `robarmwebrtc-template.json` can enable streaming with `--webrtc`. Devices created without it work normally without the flag. The stream-resource choice cannot be changed after device creation — if needed, create a new device.
+Follow [this guide](https://github.com/avnet-iotconnect/iotc-python-lite-sdk-demos/blob/main/common/general-guides/UI-ONBOARD.md)
+to onboard your TRIA Vision AI Kit 6490 to /IOTCONNECT.
+
+> [!CAUTION]
+> In **Step 14** of the onboarding guide, you must run the quickstart script from
+> inside the project directory so that the device certificate and config files are
+> placed where this demo expects them. Make sure you are in the project directory
+> first, then use this command instead of the one shown in the guide:
+> ```bash
+> wget https://raw.githubusercontent.com/avnet-iotconnect/iotc-python-lite-sdk-demos/refs/heads/main/common/scripts/quickstart.sh && bash ./quickstart.sh
+> ```
+
+> [!NOTE]
+> The starter `app.py` downloaded by the quickstart script can be disregarded —
+> this demo uses `main.py` instead.
+
+Once onboarding is complete, drop the resulting `iotcDeviceConfig.json`,
+`device-cert.pem`, and `device-pkey.pem` into the project root. All three demos
+will then publish telemetry and accept remote commands automatically.
+
+---
+
+## Starting the Demo
+
+After the board has been set up and rebooted, run these commands each time to
+start the demo:
+
+1. **SSH into the board**:
+   ```bash
+   ssh root@<board-ip>
+   ```
+   Login with password `oelinux123`.
+
+2. **Activate the environment and launch**:
+   ```bash
+   source ~/.bashrc
+   conda activate iotc-tria-xarm
+   cd ~/iotc-tria-vision-ai-kit-robotic-arm
+   python3 main.py --webrtc
+   ```
+
+   > [!NOTE]
+   > The `source ~/.bashrc` line is needed because the board's login shell does not
+   > load conda automatically on reboot. It is safe to run every time.
+
+   > [!NOTE]
+   > If running over SSH with no monitor connected, add `--headless` to suppress
+   > the camera preview window:
+   > ```bash
+   > python3 main.py --webrtc --headless
+   > ```
+
+   > [!NOTE]
+   > `--webrtc` enables live video streaming to the /IOTCONNECT portal. To run a
+   > specific demo mode, add `--mode <name>` (e.g. `--mode asl`, `--mode ball`,
+   > `--mode yolo-pickplace`). Default is `asl`.
 
 ---
 
@@ -156,7 +302,7 @@ commands. Unmapped letters appear in the overlay without an action label.
 
 ### Gesture Mapping
 
-| Hand | Sign | Arm action |
+| Hand | Sign | Arm Action |
 |------|------|------------|
 | Left | A | Advance (move forward) |
 | Left | B | Back up (move backward) |
@@ -177,7 +323,7 @@ All other recognized letters display in the overlay but produce no arm action.
 
 ### Telemetry — ASL
 
-Sent on every gesture-triggered arm action and every 5 seconds while running.
+Sent on every gesture-triggered arm action and every 2 seconds while running.
 
 | Field | Description |
 |-------|-------------|
@@ -212,6 +358,14 @@ demo #3 meaningful.
 recalibration; can't distinguish a colored ball from a similarly-colored
 backdrop.
 
+> [!NOTE]
+> This demo is intended to showcase the potential capabilities of the TRIA VISION
+> AI-KIT in conjunction with robotics and /IOTCONNECT. The consistency of success
+> with the ball-follow demo is reliant on camera angle and positioning, lighting,
+> calibration, ball position, and surface/room colors. If your setup cannot
+> reliably pick up the target ball, tweak the code and calibration sequences until
+> successful.
+
 ### One-Time Calibration (Per Site / Per Ball / Per Lighting)
 
 Three pieces of calibration data are required. Capture them in order — each
@@ -223,6 +377,13 @@ step writes a JSON file the next may depend on.
 
 #### 2a. Ball HSV Thresholds — `ball_calibrate.py`
 
+Captures the HSV thresholds used for ball segmentation.
+
+> [!IMPORTANT]
+> This script opens an interactive preview window that requires a physical display,
+> mouse, and keyboard connected directly to the board. It cannot be run over SSH.
+> Connect an HDMI monitor, USB mouse, and USB keyboard before running.
+
 ```bash
 ./calibrate.sh
 # or:
@@ -233,12 +394,16 @@ python3 ball_calibrate.py [--camera N]
 2. Click the ball in the live preview. Each click samples a 7×7 HSV patch and
    widens the mask range. The overlay shows what the detector will see.
 3. `h` = re-engage torque at current pose; `w` = release again to re-aim.
-4. `s` = save → writes `ball_color.json`
-   `r` = reset samples  `q`/ESC = quit without saving.
+4. `s` = save → writes `ball_color.json`. `r` = reset samples. `q`/ESC = quit without saving.
+
+> **Tip for white/grey balls:** hue is automatically set to the full range when
+> average saturation is below 60. Click 5–10 spots across the ball surface
+> including any slightly shadowed areas.
 
 #### 2b. Scan Poses — `teach_pose.py`
 
-Captures the arm poses cycled through while the camera sweeps for the ball.
+Captures the arm poses cycled through during `SCANNING`. Torque is dropped so
+you can pose the arm by hand.
 
 ```bash
 ./teach.sh
@@ -247,12 +412,23 @@ python3 teach_pose.py
 ```
 
 1. Hold the arm, Enter → torque drops.
-2. Pose the camera at one position: center, left-edge, or right-edge of the
-   area where the ball will be placed.
-3. `s` = snapshot. The script prints a `SCAN_POSE = [...]` block to paste into
+2. Pose the arm at each of the six positions as prompted. You teach two rows —
+   **near** (close to the base) and **far** (maximum comfortable reach) — at
+   three pan positions each (left, center, right). The script automatically
+   interpolates a third **mid** row halfway between them.
+
+   > [!IMPORTANT]
+   > The scan poses are **search positions only**, not grab positions. For each
+   > pose, orient the wrist camera **downward so it has a clear view of the table
+   > surface** in that region. Keep the gripper well above the table — once a ball
+   > is detected and centered, the grab snap will lower the arm automatically.
+
+3. Press `s` + Enter to snapshot each pose. The script prints the servo values
+   and tells you which pose to move to next.
+4. Press `h` + Enter to re-enable torque while repositioning, then `r` + Enter
+   to release torque again before posing.
+5. After all six poses are saved the script automatically updates `SCAN_POSES` in
    `modes/ball_follow.py`.
-4. `h` = re-enable torque (do this before letting go!).
-5. Repeat for each pose; `q` to quit.
 
 #### 2c. Drop Box HSV Thresholds — `ball_calibrate.py` (Pickplace Only)
 
@@ -273,12 +449,19 @@ Skip unless the gripper consistently closes next to the ball rather than on it.
 python3 calibrate_cam_offset.py [--camera N]
 ```
 
-1. Hold the arm, Enter → torque drops. Pose the gripper directly over the ball
-   at the height it would normally grab from.
-2. OSD shows live `(bx, by)` and the resulting offset.
-3. `s` = snapshot. Averages ~30 frames and prints `CAM_GRIPPER_OFFSET_X/_Y`
-   to paste into `modes/ball_follow.py`.
-4. `h` = re-enable torque, `q` = quit.
+Uses a two-phase process because the camera cannot see the ball when the wrist
+is in grab position:
+
+1. **Phase 1 — Record grab position**: Place the ball on the table. Hold the arm,
+   Enter → torque drops. Pose the gripper directly over the ball at grab height.
+   Press `g` + Enter. Records all servo positions.
+
+2. **Phase 2 — Record view position**: Tilt the wrist down until the ball appears
+   in the live camera view. Hold steady, press `s` + Enter — the script averages
+   the last ~30 frames and writes `CAM_GRIPPER_OFFSET_X/Y` and `WRIST_VIEW_OFFSET`
+   into `modes/ball_follow.py` automatically.
+
+3. Press `h` + Enter to re-enable torque, `q` + Enter to quit.
 
 ### Running the Demo
 
@@ -303,15 +486,13 @@ re-arm the cycle.
 
 ### State Machine
 
-```
-IDLE      → SCANNING                               (immediately at launch)
-SCANNING  → TRACKING                               (ball detected)
-TRACKING  → TRACKING  (centering pan/tilt + descent)
-          → GRABBING                               (centered AND radius OK)
-          → SCANNING                               (ball lost > grace window)
-GRABBING  → HOLDING                               (gripper closed)
-HOLDING   → IDLE                                  (gripper opened by user or IOTCONNECT)
-```
+| State | What It Does | Exit |
+|-------|-------------|------|
+| `IDLE` | Initial state at launch. Falls through immediately. | → `SCANNING` |
+| `SCANNING` | Cycles through `SCAN_POSES` so the camera sweeps the workspace. | Ball detected → `TRACKING` |
+| `TRACKING` | P-controller drives `shoulder_pan` + `wrist_flex` to center the ball. | Centered + radius OK → `GRABBING`; ball lost > grace window → `SCANNING` |
+| `GRABBING` | Closes the gripper, watches for stall against the ball, then lifts. | → `HOLDING` |
+| `HOLDING` | Returns to home (gripper closed) and waits for operator to open it. | Gripper opened → `IDLE` |
 
 `NO_BALL_GRACE_FRAMES` (~5 s at 6 fps) lets the arm hold its pose during brief
 detection drop-outs from clipping or HSV flicker, instead of bouncing back to
@@ -322,22 +503,22 @@ SCAN every time the ball flickers off for a frame.
 | Constant | Default | Notes |
 |----------|---------|-------|
 | `PAN_GAIN`, `TILT_GAIN` | — | Servo units commanded per pixel of error. `TILT_GAIN` is higher because wrist_flex fights gravity at extended poses. |
-| `PAN_DIR`, `TILT_DIR`, `TILT_ELBOW_DIR` | `+1` | Sign flips. Set to `-1` if the arm moves *away* from the ball instead of toward it. Mount-dependent. |
-| `MIN_TRIM_STEP` | 8 | Floor on non-zero P-controller commands. Bus servos silently ignore commands below ~5 units (static friction). |
-| `MIN_TRIM_STEP_PAN` | 18 | Higher floor for shoulder_pan — it carries the whole forearm + wrist + camera, so static friction is ~2× the wrist's. |
-| `APPROACH_STEP` | 15 | Per-frame shoulder_lift step during descent. Below ~12 the lift servo can't break friction at extended poses (shoulder_lift > 600). |
-| `MAX_STEP` | 25 | Hard cap on any single-frame servo delta. |
-| `MOVE_DURATION_MS` | 220 | Duration of each per-frame move. Too short = small commands ignored; too long = loop rate drops. |
-| `CENTER_DEADBAND_PX` | 60 | Pixel error inside which centering trims stop. Must be ≥ `MIN_TRIM_STEP_PAN × pixels/unit` (~7 px/unit) or the controller oscillates. |
-| `APPROACH_DEADBAND_PX` | — | Looser threshold — once inside this, the arm can descend while still fine-centering. |
-| `TARGET_RADIUS_PX`, `RADIUS_TOLERANCE` | — | Apparent ball radius (px) meaning "close enough to grab". Tune by watching the OSD `r=` value at the moment you want the grab to fire. |
-| `CAM_GRIPPER_OFFSET_X/Y` | 0/0 | Pixel offset between camera optical axis and gripper jaws. Only set after running `calibrate_cam_offset.py`. |
-| `LIFT_MAX`, `ELBOW_MAX` | — | Safety ceilings so a never-satisfied radius check can't drive the gripper into the table. |
-| `NO_BALL_GRACE_FRAMES` | — | Consecutive lost-ball frames before falling back to SCANNING. Increase if the ball flickers at the frame edge. |
+| `PAN_DIR`, `TILT_DIR` | — | Sign flips. Determined by live test — flip from `+1` to `-1` if the arm moves away from the ball instead of toward it. |
+| `MIN_TRIM_STEP` | 3 | Floor on non-zero P-controller commands. Bus servos silently ignore commands below ~5 units (static friction). |
+| `MIN_TRIM_STEP_PAN` | 18 | Higher floor for shoulder_pan — it carries the entire forearm + wrist + camera, so its static-friction floor is roughly 2× the wrist's. |
+| `APPROACH_STEP` | 0 | Per-frame shoulder_lift step during descent. Disabled in table-mount build — the grab snap handles height directly. |
+| `MAX_STEP` | 25 | Hard cap on any single-frame servo delta — keeps a large pixel error from snapping the arm. |
+| `MOVE_DURATION_MS` | 220 | How long each per-frame move takes. Too short = small commands ignored; too long = loop rate drops. |
+| `CENTER_DEADBAND_PX` | 60 | Pixel error inside which the controller stops trimming. Must be ≥ `MIN_TRIM_STEP_PAN × pixels/unit` or the controller will oscillate. |
+| `TARGET_RADIUS_PX`, `RADIUS_TOLERANCE` | — | Apparent ball radius (px) meaning "close enough to grab". Tune for your ball + grab height. |
+| `CAM_GRIPPER_OFFSET_X/Y` | 0/0 | Aim-point shift in pixels, set by `calibrate_cam_offset.py`. Leave at 0/0 unless you observe a systematic miss. |
+| `LIFT_MAX`, `ELBOW_MAX` | — | Safety ceilings during approach so a never-satisfied radius check can't drive the gripper into the table. |
+| `NO_BALL_GRACE_FRAMES` | — | Consecutive lost-ball frames before falling back to SCANNING. |
 | `SCAN_POSES` | — | Poses cycled while searching. Captured with `teach_pose.py`. |
 
-> All gain/step constants scale implicitly with camera frame rate. If you
-> change camera resolution or drop the preview, expect to re-tune.
+> **Warning:** `PAN_GAIN`, `TILT_GAIN`, and `MAX_STEP` all scale implicitly with
+> camera/loop frame rate — if you change resolution or drop the preview, expect to
+> re-tune.
 
 ### Telemetry — HSV
 
@@ -353,7 +534,27 @@ Each payload (sent every ~2 s) carries:
 | `ballTrack.d_pan`, `d_tilt`, `d_lift`, `d_elbow` | Last commanded servo deltas |
 | `ballTrack.is_prediction` | 1 if current bbox is extrapolated, not detected |
 | `ballTrack.no_ball_frames` | Consecutive frames without a detection |
-| `ballTrack.pred_frames_left` | Extrapolation budget remaining |
+
+### /IOTCONNECT Dashboard
+
+<img src="./media/dashboard.png">
+
+To monitor and control your TRIA Vision AI Kit 6490 Robotic Arm demo with an
+interactive dashboard in /IOTCONNECT:
+
+1. Download the [provided dashboard template](robotic_arm_dashboard_export.json)
+   from this repo.
+2. Click **"Create Dashboard"** in the toolbar at the top of the /IOTCONNECT UI.
+3. Select **"Import Dashboard"** and browse to select the downloaded template.
+4. Choose `robarmRTC` for the Device Template and then choose your device's
+   unique ID for the Device.
+5. Name your dashboard as desired.
+6. Click **"Save"**.
+7. If desired, move or add widgets in the Dashboard Editor screen, then click
+   **"Save"** when complete.
+8. Use the control buttons in the dashboard to send commands to the arm — adjust
+   individual servos, or send complex demo commands (the buttons with green font
+   labels along the bottom) to have the arm complete a series of fluid movements.
 
 ---
 
@@ -482,10 +683,10 @@ is a floor, not a window.
 
 | Constant | Default | Notes |
 |----------|---------|-------|
-| `PAN_COOLDOWN_MS` | 250 | Minimum gap between shoulder_pan corrections. Pan can't issue commands smaller than ~18 units without stalling; without a cooldown the loop retargets before the servo finishes and the ball oscillates. Lower → faster tracking; higher → more stable settling. |
-| `CENTERED_LATCH_FRAMES` | 0 | Latch `centered_ok` for N frames after first becoming true. Latch ≥ 4 fires too early in testing — keep at 0. |
-| `DEPTH_SETTLE_FRAMES` | 3 | Consecutive in-window depth_ok frames before firing the grab. At ~12–15 Hz this is ~200 ms of sustained in-window depth. |
-| `D_EWMA_ALPHA` | 0.25 | EWMA smoothing factor for MiDaS depth. Higher → more responsive; lower → heavier smoothing. 0.25 ≈ 4-frame effective average. |
+| `PAN_COOLDOWN_MS` | 250 | Minimum gap between shoulder_pan corrections. |
+| `CENTERED_LATCH_FRAMES` | 0 | Latch `centered_ok` for N frames after first becoming true. |
+| `DEPTH_SETTLE_FRAMES` | 3 | Consecutive in-window depth_ok frames before firing the grab. |
+| `D_EWMA_ALPHA` | 0.25 | EWMA smoothing factor for MiDaS depth. Higher → more responsive; lower → heavier smoothing. |
 | `DEPTH_TOL_FLOOR` | 20 | Minimum effective gate tolerance — protects against pathologically tight teach captures. |
 | `DEPTH_TOL_MULT` | 1.5 | Tolerance multiplier: effective tolerance = `max(FLOOR, MULT × D_stdev_from_teach)`. |
 
@@ -533,16 +734,6 @@ These commands work via IOTCONNECT regardless of which demo is running:
 
 ---
 
-## Custom NPU Detector — End-to-End Reproduction
-
-[`CUSTOM_NPU_DETECTOR.md`](CUSTOM_NPU_DETECTOR.md) covers the full pipeline for
-retraining the YOLO model from scratch on your own ball: image capture on the
-board, HSV auto-labelling, labelImg review, train/val split, Colab YOLOv8n
-training, INT8 TFLite export, and NPU deployment. Start there if the bundled
-model doesn't recognize your specific ball.
-
----
-
 ## Live WebRTC Video Streaming (Optional)
 
 Any demo can stream the wrist-camera feed live to the IOTCONNECT portal using
@@ -551,11 +742,11 @@ affect vision or arm control when unused.
 
 ### Prerequisites
 
-Your device **must** be created in IOTCONNECT using the `robarmwebrtc`
-template (`robarmwebrtc-template.json` in this repo). During device creation,
-when prompted to select a **Stream Resource**, choose **WebRTC**. This choice
-cannot be changed after device creation — if your device was created with a
-different template, create a new one.
+Your device **must** be created in IOTCONNECT using the `robarmwebrtc` template
+(`robarmwebrtc-template.json` in this repo). During device creation, when
+prompted to select a **Stream Resource**, choose **WebRTC**. This choice cannot
+be changed after device creation — if your device was created with a different
+template, create a new one.
 
 ### Enabling WebRTC Streaming
 
@@ -573,20 +764,29 @@ vision loop so arm moves don't stall the stream.
 
 ---
 
+## Custom NPU Detector — End-to-End Reproduction
+
+[`CUSTOM_NPU_DETECTOR.md`](CUSTOM_NPU_DETECTOR.md) covers the full pipeline for
+retraining the YOLO model from scratch on your own ball: image capture on the
+board, HSV auto-labelling, labelImg review, train/val split, Colab YOLOv8n
+training, INT8 TFLite export, and NPU deployment. Start there if the bundled
+model doesn't recognize your specific ball.
+
+---
+
 ## References
 
-### Tria VisionAI Kit 6490
-- [Tria VisionAI Kit 6490 Setup Guide](https://github.com/avnet-iotconnect/iotc-python-lite-sdk-demos/tree/main/tria-vision-ai-kit-6490)
-- [Tria VisionAI-Kit 6490 Product Page](https://www.newark.com/avnet/sm2-sk-qcs6490-ep6-kit001/dev-kit-64bit-arm-cortex-a55-a78/dp/51AM9843)
-- [Tria Startup Guide](https://avnet.com/wcm/connect/137a97f1-eb6e-48ba-89a4-40b024558593/Vision+AI-KIT+6490+Startup+Guide+v1.3.pdf)
+### TRIA Vision AI Kit 6490
+- [TRIA Vision AI Kit 6490 Setup Guide](https://github.com/avnet-iotconnect/iotc-python-lite-sdk-demos/tree/main/tria-vision-ai-kit-6490) — Complete setup and configuration guide
+- [TRIA Vision AI-KIT 6490 Product Page](https://www.newark.com/avnet/sm2-sk-qcs6490-ep6-kit001/dev-kit-64bit-arm-cortex-a55-a78/dp/51AM9843) — Hardware specifications and purchase information
+- [TRIA Startup Guide](https://avnet.com/wcm/connect/137a97f1-eb6e-48ba-89a4-40b024558593/Vision+AI-KIT+6490+Startup+Guide+v1.3.pdf?MOD=AJPERES&attachment=true&id=1761931434976) — Hardware setup and cable connections
 
 ### IOTCONNECT
-- [IOTCONNECT Python SDK](https://github.com/avnet-iotconnect/avnet-iotconnect-python-sdk)
-- [IOTCONNECT device onboarding](https://github.com/avnet-iotconnect/iotc-python-lite-sdk-demos/blob/main/common/general-guides/UI-ONBOARD.md)
-- [IOTCONNECT platform](https://www.iotconnect.io/)
+- [IOTCONNECT Python SDK](https://github.com/avnet-iotconnect/avnet-iotconnect-python-sdk) — IOTCONNECT Python SDK for cloud connectivity
+- [IOTCONNECT Device Onboarding](https://github.com/avnet-iotconnect/iotc-python-lite-sdk-demos/blob/main/common/general-guides/UI-ONBOARD.md) — Step-by-step device registration guide
+- [IOTCONNECT Platform](https://www.iotconnect.io/) — Enterprise IoT platform information
 
 ### Robotics & AI
-- [xArm Python SDK](https://github.com/xArm-Developer/xArm-Python-SDK)
-- [ASL MediaPipe + PointNet](https://github.com/AlbertaBeef/asl_mediapipe_pointnet)
-- [Qualcomm AI Hub](https://aihub.qualcomm.com) — source of the bundled YOLO-X,
-  MiDaS-V2, and other Hexagon-optimized models on this board.
+- [xArm Python Library](https://github.com/xArm-Developer/xArm-Python-SDK) — Official Python SDK for Hiwonder XArm robotic arms
+- [ASL MediaPipe + PointNet](https://github.com/AlbertaBeef/asl_mediapipe_pointnet) — ASL gesture recognition using MediaPipe and PointNet
+- [Qualcomm AI Hub](https://aihub.qualcomm.com) — Source of the bundled YOLO-X, MiDaS-V2, and other Hexagon-optimized models on this board
