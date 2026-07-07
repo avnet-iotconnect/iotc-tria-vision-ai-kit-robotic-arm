@@ -30,7 +30,7 @@ TILT_GAIN = 0.10           # servo units per pixel of vertical error — higher 
 # moves in the +x/+y direction of the pixel frame". Flip either to -1 if the
 # arm moves AWAY from the ball. Determined by live test, not theory.
 PAN_DIR = 1               # MUST stay -1 for current wall mount; verified by user repeatedly. Do NOT flip without explicit instruction.
-TILT_DIR = -1              # was 1; flipped 2026-04-18 — logs showed wrist_flex driving UP when ball was already in top of frame (tilt_err got worse over time)
+TILT_DIR = -1              # was 1; flipped 2026-04-18 — logs showed wrist_flex driving UP when ball was already in top of frame (tilt_err got worse over time). 2026-07-06: briefly flipped to 1 on the tilted mount, live test proved -1 is correct (ball at bottom of frame drove further down with 1). The look-alike failure mode is NOT a wrong sign — it's the taught scan pose parking wrist_flex at the ~1000 stop, leaving zero travel for ball-above corrections (flex pinned at limit, |tilt_err| frozen). Fix that by re-teaching the pose with flex <= ~900, not by flipping this.
 APPROACH_STEP = 15         # shoulder_lift step toward the ball when too far. Raised from 6 on 2026-04-19 — at extended poses (shoulder_lift>600) a 6-unit command silently fails to break shoulder_lift's static friction, same friction-floor failure mode as MIN_TRIM_STEP_PAN. Lift sat at 630 for many seconds with d_lift=6 firing every frame; ball never got closer. 15 is enough to actually move the servo. Wrist co-trim during descent absorbs the larger per-step ball-shift in the frame.
 ELBOW_REACH_RATIO = 0.6    # elbow_flex contribution per unit of shoulder_lift during approach
 TILT_ELBOW_RATIO = 0.0     # disabled 2026-04-19 — telemetry showed elbow_flex draining to floor (clamp=0) because tilt's negative contribution outweighed approach's positive one over many frames; once elbow saturates the assist is wasted anyway. Wrist alone handles tilt with the wider CENTER_DEADBAND_PX
@@ -168,6 +168,18 @@ class BallFollowMode(Mode):
         self.last_deltas = (0, 0, 0, 0)  # d_pan, d_tilt, d_lift, d_elbow
         self.last_is_prediction = False
         self.last_telemetry_at = 0.0
+        # Scan-pose override system (scan_poses.json written by the
+        # teach_scan_pose cloud command) — same as PickPlaceMode. Falls back
+        # to the hardcoded SCAN_POSES when nothing has been taught.
+        import scan_poses_store
+        loaded_poses, loaded_labels = scan_poses_store.load()
+        if loaded_poses:
+            self.scan_poses = loaded_poses
+            self.scan_pose_labels = loaded_labels
+            print(f"[ball] using {len(loaded_poses)} scan poses from disk: {loaded_labels}")
+        else:
+            self.scan_poses = SCAN_POSES
+            self.scan_pose_labels = SCAN_POSE_LABELS
         self.scan_idx = 0
         self.last_scan_move_at = 0.0
         # perf instrumentation (printed from process_frame every PERF_EVERY frames)
@@ -184,8 +196,8 @@ class BallFollowMode(Mode):
         self.lower = np.array([cfg["h_min"], cfg["s_min"], cfg["v_min"]], dtype=np.uint8)
         self.upper = np.array([cfg["h_max"], cfg["s_max"], cfg["v_max"]], dtype=np.uint8)
         print(f"[ball] HSV range loaded: lower={self.lower.tolist()} upper={self.upper.tolist()}")
-        print(f"[ball] moving to scan pose [{SCAN_POSE_LABELS[0]}]...")
-        arm.setPosition(SCAN_POSES[0], duration=1500, wait=True)
+        print(f"[ball] moving to scan pose [{self.scan_pose_labels[0]}]...")
+        arm.setPosition(self.scan_poses[0], duration=1500, wait=True)
         self.scan_idx = 0
         self.last_scan_move_at = time.time()
         self.state = "IDLE"
@@ -282,7 +294,7 @@ class BallFollowMode(Mode):
         if ball is None:
             # truly lost — nothing real, nothing to predict from
             self.no_ball_frames += 1
-            label = SCAN_POSE_LABELS[self.scan_idx]
+            label = self.scan_pose_labels[self.scan_idx]
             self._log(f"SCAN[{label}]: no ball ({self.no_ball_frames})")
             cv2.putText(annotated, f"scan {label}  no ball ({self.no_ball_frames})", (10, 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2, cv2.LINE_AA)
@@ -297,11 +309,11 @@ class BallFollowMode(Mode):
                 now = time.time()
                 next_advance_at = self.last_scan_move_at + (SCAN_MOVE_MS / 1000.0) + SCAN_DWELL_S
                 if now >= next_advance_at:
-                    self.scan_idx = (self.scan_idx + 1) % len(SCAN_POSES)
-                    next_label = SCAN_POSE_LABELS[self.scan_idx]
+                    self.scan_idx = (self.scan_idx + 1) % len(self.scan_poses)
+                    next_label = self.scan_pose_labels[self.scan_idx]
                     print(f"[ball] scanning -> {next_label}")
                     try:
-                        arm.setPosition(SCAN_POSES[self.scan_idx], duration=SCAN_MOVE_MS, wait=False)
+                        arm.setPosition(self.scan_poses[self.scan_idx], duration=SCAN_MOVE_MS, wait=False)
                     except Exception as e:
                         print(f"[ball] scan move failed: {e}")
                     self.last_scan_move_at = time.time()

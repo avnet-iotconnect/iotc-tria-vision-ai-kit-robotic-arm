@@ -120,8 +120,8 @@ class YoloBallFollowMode(BallFollowMode):
     def setup(self, arm):
         # No ball_color.json — YOLO needs no HSV calibration. Just take up the
         # first scan pose like the parent does.
-        print(f"[yolo-ball] moving to scan pose [{bf.SCAN_POSE_LABELS[0]}]...")
-        arm.setPosition(bf.SCAN_POSES[0], duration=1500, wait=True)
+        print(f"[yolo-ball] moving to scan pose [{self.scan_pose_labels[0]}]...")
+        arm.setPosition(self.scan_poses[0], duration=1500, wait=True)
         self.scan_idx = 0
         self.last_scan_move_at = time.time()
         self.state = "IDLE"
@@ -204,7 +204,7 @@ class YoloBallFollowMode(BallFollowMode):
 
         if ball is None:
             self.no_ball_frames += 1
-            label = bf.SCAN_POSE_LABELS[self.scan_idx]
+            label = self.scan_pose_labels[self.scan_idx]
             self._log(f"SCAN[{label}]: no ball ({self.no_ball_frames})")
             cv2.putText(annotated, f"scan {label}  no ball ({self.no_ball_frames})", (10, 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2, cv2.LINE_AA)
@@ -214,11 +214,11 @@ class YoloBallFollowMode(BallFollowMode):
                 now = time.time()
                 next_advance_at = self.last_scan_move_at + (bf.SCAN_MOVE_MS / 1000.0) + bf.SCAN_DWELL_S
                 if now >= next_advance_at:
-                    self.scan_idx = (self.scan_idx + 1) % len(bf.SCAN_POSES)
-                    next_label = bf.SCAN_POSE_LABELS[self.scan_idx]
+                    self.scan_idx = (self.scan_idx + 1) % len(self.scan_poses)
+                    next_label = self.scan_pose_labels[self.scan_idx]
                     print(f"[yolo-ball] scanning -> {next_label}")
                     try:
-                        arm.setPosition(bf.SCAN_POSES[self.scan_idx], duration=bf.SCAN_MOVE_MS, wait=False)
+                        arm.setPosition(self.scan_poses[self.scan_idx], duration=bf.SCAN_MOVE_MS, wait=False)
                     except Exception as e:
                         print(f"[yolo-ball] scan move failed: {e}")
                     self.last_scan_move_at = time.time()
