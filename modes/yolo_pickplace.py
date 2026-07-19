@@ -24,6 +24,7 @@ import time
 import cv2
 import numpy as np
 
+import grab_threshold_store
 from . import ball_follow as bf
 from .ball_follow import BallFollowMode
 from .pickplace import PickPlaceMode
@@ -110,12 +111,15 @@ class YoloBallFollowMode(BallFollowMode):
                 self.D_grab = float(cfg["D_grab"])
                 self.D_tolerance = max(
                     DEPTH_TOL_FLOOR, DEPTH_TOL_MULT * float(cfg.get("D_stdev", DEPTH_TOL_FLOOR)))
-                print(f"[yolo-ball] depth gate ARMED: D_grab={self.D_grab:.0f} "
-                      f"+/-{self.D_tolerance:.0f}  (descent + grab keyed on depth, "
-                      f"not pixel-radius)")
+                print(f"[yolo-ball] taught reference loaded: D_grab={self.D_grab:.0f} "
+                      f"+/-{self.D_tolerance:.0f} (reference only — gate below)")
             except Exception as e:
-                print(f"[yolo-ball] could not load {GRAB_DEPTH_PATH}: {e} "
-                      "— falling back to pixel-radius gate")
+                print(f"[yolo-ball] could not load {GRAB_DEPTH_PATH}: {e}")
+        if depth_detector is not None:
+            print(f"[yolo-ball] depth gate ARMED: D >= "
+                  f"{grab_threshold_store.get():g}  (set_grab_threshold to change, "
+                  f"grab_threshold_reset for default "
+                  f"{grab_threshold_store.DEFAULT_THRESHOLD:g})")
 
     def setup(self, arm):
         # No ball_color.json — YOLO needs no HSV calibration. Just take up the
@@ -284,20 +288,23 @@ class YoloBallFollowMode(BallFollowMode):
             self._centered_streak -= 1
         centered_latched = centered_ok or self._centered_streak > 0
 
-        # Pick the gate signal: depth (when teach is loaded AND we have a live
-        # D) or the legacy pixel-radius fallback.
-        depth_armed = self.D_grab is not None
+        # Pick the gate signal: depth (whenever the depth detector delivers a
+        # live D) or the legacy pixel-radius fallback. The threshold comes
+        # from grab_threshold_store (default 750, live-settable via the
+        # set_grab_threshold cloud command — re-read every frame so a change
+        # applies instantly). The taught D_grab/D_stdev from grab_depth.json
+        # is reference/telemetry only.
+        D_threshold = grab_threshold_store.get()
         # Use EWMA-smoothed D for the gate (MiDaS has ~20-unit single-frame
         # noise). last_depth_at_ball is the raw value, last_depth_at_ball_smoothed
         # is what the control law actually checks.
         D = self.last_depth_at_ball_smoothed
         D_raw = self.last_depth_at_ball
-        # Gate is a floor: any D at or above (D_grab - tol) fires. Removing
-        # the upper bound means an overshoot toward the ball (closer than
-        # taught) still counts as "ready to grab" — closer is better, never
-        # worse, for ball pickup.
-        depth_ok = depth_armed and D is not None and D >= self.D_grab - self.D_tolerance
-        use_depth = depth_armed and D is not None
+        # Gate is a floor: any D at or above the threshold fires. No upper
+        # bound — an overshoot toward the ball (closer than intended) still
+        # counts as "ready to grab"; closer is better, never worse.
+        use_depth = self.depth is not None and D is not None
+        depth_ok = use_depth and D >= D_threshold
         # Settling: count consecutive depth_ok frames. Grab only fires once D
         # has been in-window for DEPTH_SETTLE_FRAMES in a row, so a transient
         # mid-descent crossing or a noisy MiDaS sample can't fire the grab.
@@ -309,7 +316,7 @@ class YoloBallFollowMode(BallFollowMode):
         grab_gate_ok = depth_settled if use_depth else radius_ok
         # Descent: too far → keep approaching. Uses smoothed D too so we
         # don't flip-flop the descent on a noisy frame.
-        too_far = (D < self.D_grab - self.D_tolerance) if use_depth \
+        too_far = (D < D_threshold) if use_depth \
                   else (br < bf.TARGET_RADIUS_PX - bf.RADIUS_TOLERANCE)
 
         cv2.putText(annotated,
@@ -318,10 +325,9 @@ class YoloBallFollowMode(BallFollowMode):
         if use_depth:
             settle_str = (f"settle {self._depth_settle}/{DEPTH_SETTLE_FRAMES}"
                           if depth_ok else "depth=NO")
-            d_threshold = self.D_grab - self.D_tolerance
             gate_line = (f"center={'OK' if centered_ok else 'NO'}  "
                          f"{settle_str} "
-                         f"(D >= {d_threshold:.0f}, target {self.D_grab:.0f})")
+                         f"(D >= {D_threshold:g})")
         else:
             gate_line = (f"center={'OK' if centered_ok else 'NO'}  "
                          f"radius={'OK' if radius_ok else 'NO'} "
@@ -449,6 +455,7 @@ class YoloBallFollowMode(BallFollowMode):
             "depth_at_ball_smoothed": (round(float(self.last_depth_at_ball_smoothed), 1)
                                        if self.last_depth_at_ball_smoothed is not None else 0.0),
             "depth_settle": int(self._depth_settle),
+            "D_threshold": float(grab_threshold_store.get()),
             "D_grab": float(self.D_grab) if self.D_grab is not None else 0.0,
             "D_tolerance": float(self.D_tolerance) if self.D_tolerance is not None else 0.0,
         })

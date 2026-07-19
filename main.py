@@ -23,6 +23,7 @@ from datetime import datetime
 import cv2
 
 import camera_settings as cam_settings
+import grab_threshold_store
 import scan_poses_store
 import systemdata
 import xarm
@@ -558,6 +559,24 @@ def process_iotconnect_commands(arm):
                         cam_settings.update_one(name, casted)
                         cam_settings.mark_dirty()  # capture thread re-applies on next iteration
                         ack_message = f"camera_setting: {name}={casted} (saved + applied)"
+            elif command_name == 'set_grab_threshold':
+                # `set_grab_threshold 800` (positional) or {"value": 800}.
+                # Persists to grab_threshold.json AND applies live — the yolo
+                # modes re-read the store every frame, no mode restart needed.
+                value = _extract_arg(command_args, 'value', 'threshold', 'd')
+                try:
+                    v = grab_threshold_store.set_value(value)
+                    ack_message = (f"grab gate now D >= {v:g} "
+                                   "(applied live, persisted)")
+                except (TypeError, ValueError) as e:
+                    ack_status = C2dAck.CMD_FAILED
+                    ack_message = f"set_grab_threshold: invalid value '{value}': {e}"
+            elif command_name == 'grab_threshold_show':
+                ack_message = (f"grab gate: D >= {grab_threshold_store.get():g} "
+                               f"(default {grab_threshold_store.DEFAULT_THRESHOLD:g})")
+            elif command_name == 'grab_threshold_reset':
+                v = grab_threshold_store.reset()
+                ack_message = f"grab gate reset to default: D >= {v:g}"
             elif command_name == 'camera_settings_show':
                 ack_message = f"camera_settings: {json.dumps(cam_settings.load())}"
             elif command_name == 'camera_settings_reset':
