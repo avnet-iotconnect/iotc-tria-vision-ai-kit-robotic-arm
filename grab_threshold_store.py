@@ -1,76 +1,150 @@
-"""Persistent, live-settable depth threshold for the YOLO grab gate.
+"""Persistent, live-settable configuration for the YOLO grab gate.
 
-The yolo-ball / yolo-pickplace grab fires when the EWMA-smoothed MiDaS
-depth at the ball satisfies D >= threshold (higher = closer). The
-threshold defaults to DEFAULT_THRESHOLD and is changed at runtime with
-the `set_grab_threshold` IOTCONNECT command; the mode re-reads get()
-every frame, so changes apply live with no mode restart. The value
-persists to grab_threshold.json; `grab_threshold_reset` deletes the
-file and returns to the default.
+Three settings, all changeable from IOTCONNECT with no mode restart (the
+yolo modes re-read this store every frame):
 
-This intentionally supersedes the taught D_grab/D_stdev gate from
-grab_depth.json: the teach flow is still the best way to *discover* a
-good value (watch D in the overlay while posing the arm at the grab
-point), but the operator sets the gate explicitly.
+  D_threshold   depth floor — gate satisfied when smoothed MiDaS D >= this
+                (higher = closer). Default 750.
+                Command: set_grab_threshold <value>
+
+  gate_mode     which signals must agree before the grab fires:
+                  'depth'  — MiDaS depth only
+                  'radius' — apparent ball radius only (known-size ball:
+                             r_px grows as the ball nears; far steadier
+                             than INT8 MiDaS)
+                  'both'   — grab needs depth AND radius; descent continues
+                             while EITHER still reads far. Default.
+                Command: set_grab_gate <depth|radius|both>
+
+  radius_target radius floor in px — gate satisfied when ball r >=
+                (radius_target - RADIUS_TOLERANCE). None = auto: use the
+                taught ball_r_at_grab from grab_depth.json, falling back
+                to TARGET_RADIUS_PX. Default auto.
+                Command: set_grab_radius <px|auto>
+
+Persisted to grab_threshold.json; `grab_threshold_reset` restores all
+three defaults. The taught grab_depth.json remains the best way to
+*discover* good values (it records both D_grab and ball_r_at_grab at the
+physical grab pose).
 """
 
 import json
 import os
 
 DEFAULT_THRESHOLD = 750.0
+DEFAULT_MODE = 'both'
+GATE_MODES = ('depth', 'radius', 'both')
 PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                     'grab_threshold.json')
 
-_current = None
+_cfg = None
 
 
 def _load():
-    global _current
+    global _cfg
+    _cfg = {'D_threshold': DEFAULT_THRESHOLD,
+            'gate_mode': DEFAULT_MODE,
+            'radius_target': None}
     if os.path.exists(PATH):
         try:
             with open(PATH) as f:
-                _current = float(json.load(f)['D_threshold'])
-        except (OSError, ValueError, KeyError, json.JSONDecodeError) as e:
-            print(f"[grab_threshold] load failed ({PATH}): {e} — "
-                  f"using default {DEFAULT_THRESHOLD:g}")
-            _current = DEFAULT_THRESHOLD
-    else:
-        _current = DEFAULT_THRESHOLD
+                data = json.load(f)
+            v = float(data.get('D_threshold', DEFAULT_THRESHOLD))
+            m = str(data.get('gate_mode', DEFAULT_MODE)).lower()
+            r = data.get('radius_target')
+            _cfg['D_threshold'] = v
+            _cfg['gate_mode'] = m if m in GATE_MODES else DEFAULT_MODE
+            _cfg['radius_target'] = float(r) if r is not None else None
+        except (OSError, ValueError, TypeError, json.JSONDecodeError) as e:
+            print(f"[grab_gate] load failed ({PATH}): {e} — using defaults")
+
+
+def _save():
+    with open(PATH, 'w') as f:
+        json.dump(_cfg, f, indent=2)
+
+
+def _ensure():
+    if _cfg is None:
+        _load()
 
 
 def get():
-    """Current threshold. Cheap (cached) — safe to call every frame."""
-    if _current is None:
-        _load()
-    return _current
+    """Depth threshold. Cheap (cached) — safe to call every frame."""
+    _ensure()
+    return _cfg['D_threshold']
+
+
+def get_mode():
+    """Gate mode: 'depth' | 'radius' | 'both'."""
+    _ensure()
+    return _cfg['gate_mode']
+
+
+def get_radius():
+    """Explicit radius target in px, or None for auto (taught/constant)."""
+    _ensure()
+    return _cfg['radius_target']
 
 
 def set_value(value):
-    """Validate, persist, and apply a new threshold. Returns the float.
-
-    MiDaS relative depth at this site has been observed roughly in the
-    400-1100 range; the wide sanity bound only rejects nonsense input,
-    not unusual-but-deliberate values.
-    """
-    global _current
+    """Validate, persist, and apply a new depth threshold."""
+    _ensure()
     v = float(value)
     if not 0 < v < 5000:
         raise ValueError(f"threshold {v:g} outside sane range 1-4999")
-    _current = v
-    with open(PATH, 'w') as f:
-        json.dump({'D_threshold': v}, f, indent=2)
-    print(f"[grab_threshold] gate set to D >= {v:g} (saved {PATH})")
+    _cfg['D_threshold'] = v
+    _save()
+    print(f"[grab_gate] depth floor set to D >= {v:g} (saved {PATH})")
+    return v
+
+
+def set_mode(mode):
+    """Set which gate signals must agree ('depth'|'radius'|'both')."""
+    _ensure()
+    m = str(mode).strip().lower()
+    if m not in GATE_MODES:
+        raise ValueError(f"mode '{mode}' not one of {GATE_MODES}")
+    _cfg['gate_mode'] = m
+    _save()
+    print(f"[grab_gate] gate mode set to '{m}' (saved {PATH})")
+    return m
+
+
+def set_radius(value):
+    """Set explicit radius target in px, or None/'auto' for taught value."""
+    _ensure()
+    if value is None or str(value).strip().lower() in ('auto', 'none', 'reset'):
+        _cfg['radius_target'] = None
+        _save()
+        print(f"[grab_gate] radius target set to auto (taught ball_r_at_grab)")
+        return None
+    v = float(value)
+    if not 10 <= v <= 400:
+        raise ValueError(f"radius {v:g} px outside sane range 10-400")
+    _cfg['radius_target'] = v
+    _save()
+    print(f"[grab_gate] radius floor set to r >= {v:g} px (saved {PATH})")
     return v
 
 
 def reset():
-    """Back to DEFAULT_THRESHOLD; removes the override file."""
-    global _current
-    _current = DEFAULT_THRESHOLD
+    """All three settings back to defaults; removes the override file."""
+    global _cfg
+    _cfg = None
     if os.path.exists(PATH):
         try:
             os.remove(PATH)
-            print(f"[grab_threshold] removed {PATH}")
+            print(f"[grab_gate] removed {PATH}")
         except OSError as e:
-            print(f"[grab_threshold] could not remove {PATH}: {e}")
-    return _current
+            print(f"[grab_gate] could not remove {PATH}: {e}")
+    _ensure()
+    return dict(_cfg)
+
+
+def describe():
+    """One-line human summary for command acks and startup logs."""
+    _ensure()
+    r = _cfg['radius_target']
+    return (f"mode={_cfg['gate_mode']}  D >= {_cfg['D_threshold']:g}  "
+            f"r >= {f'{r:g}px' if r is not None else 'auto (taught)'}")

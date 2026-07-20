@@ -571,12 +571,33 @@ def process_iotconnect_commands(arm):
                 except (TypeError, ValueError) as e:
                     ack_status = C2dAck.CMD_FAILED
                     ack_message = f"set_grab_threshold: invalid value '{value}': {e}"
+            elif command_name == 'set_grab_gate':
+                # `set_grab_gate both` — which signals must agree before the
+                # grab fires: depth | radius | both. Live, no restart.
+                value = _extract_arg(command_args, 'mode', 'value')
+                try:
+                    m = grab_threshold_store.set_mode(value)
+                    ack_message = f"grab gate mode now '{m}' — {grab_threshold_store.describe()}"
+                except (TypeError, ValueError) as e:
+                    ack_status = C2dAck.CMD_FAILED
+                    ack_message = f"set_grab_gate: {e}"
+            elif command_name == 'set_grab_radius':
+                # `set_grab_radius 200` (px floor target) or `set_grab_radius
+                # auto` to track the taught ball_r_at_grab. Live, no restart.
+                value = _extract_arg(command_args, 'value', 'radius', 'r')
+                try:
+                    r = grab_threshold_store.set_radius(value)
+                    ack_message = (f"grab radius target now "
+                                   f"{f'{r:g}px' if r is not None else 'auto (taught)'} "
+                                   f"— {grab_threshold_store.describe()}")
+                except (TypeError, ValueError) as e:
+                    ack_status = C2dAck.CMD_FAILED
+                    ack_message = f"set_grab_radius: invalid value '{value}': {e}"
             elif command_name == 'grab_threshold_show':
-                ack_message = (f"grab gate: D >= {grab_threshold_store.get():g} "
-                               f"(default {grab_threshold_store.DEFAULT_THRESHOLD:g})")
+                ack_message = f"grab gate: {grab_threshold_store.describe()}"
             elif command_name == 'grab_threshold_reset':
-                v = grab_threshold_store.reset()
-                ack_message = f"grab gate reset to default: D >= {v:g}"
+                grab_threshold_store.reset()
+                ack_message = f"grab gate reset to defaults: {grab_threshold_store.describe()}"
             elif command_name == 'camera_settings_show':
                 ack_message = f"camera_settings: {json.dumps(cam_settings.load())}"
             elif command_name == 'camera_settings_reset':
