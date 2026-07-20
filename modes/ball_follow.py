@@ -54,8 +54,14 @@ MIN_FILL_RATIO = 0.65      # contour_area / enclosing_circle_area; ball ≈0.85+
 CAM_GRIPPER_OFFSET_X = 0
 CAM_GRIPPER_OFFSET_Y = 0
 # --- search envelope ---
-PAN_MIN = 300              # shoulder_pan clamped to [PAN_MIN, PAN_MAX] during live tracking
-PAN_MAX = 800
+PAN_MIN = 90               # shoulder_pan clamped to [PAN_MIN, PAN_MAX] during live tracking.
+PAN_MAX = 860              # 2026-07-19: widened from [300, 800] to cover the taught scan
+                           # envelope (left pose pan=93, right pose pan=854 on the tilted
+                           # mount) — the old clamp let scanning FIND a ball the tracker
+                           # was then forbidden to FOLLOW: pan pinned at the clamp,
+                           # remainder under MIN_TRIM_STEP_PAN static friction, pan_err
+                           # frozen just outside the deadband, grab never fires. Keep
+                           # these >= the widest taught scan pose pans.
 # Hard safety limits so an approach that never satisfies radius_ok (bad HSV, wrong-sized ball,
 # mis-set TARGET_RADIUS_PX) can't drive the gripper into the table. Tune by teach-mode probing.
 LIFT_MAX = 800             # shoulder_lift ceiling during approach (larger = reach further down)
