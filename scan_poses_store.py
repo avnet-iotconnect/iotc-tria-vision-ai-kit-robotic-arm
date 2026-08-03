@@ -22,6 +22,16 @@ import os
 DEFAULT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                             'scan_poses.json')
 
+# Scan poses must leave the claw OPEN, ready to grab: the ball modes' grab
+# sequence only ever CLOSES the gripper from wherever it currently sits.
+# Hand-posing during teach_scan_pose almost always captures a closed claw
+# (the teach snapshot reads all six servos), which would make every scan
+# pose shut the jaws before the pickup. Force servo 1 open on save and load.
+# 60 = fully open — the same value the grab sequence commands right before
+# closing (see modes/ball_follow.py), so it's known-safe against the stop.
+SERVO_GRIPPER = 1
+GRIPPER_SCAN_OPEN = 60
+
 
 def load(path=DEFAULT_PATH):
     """Return (poses_list, labels_list) loaded from disk, or (None, None) if
@@ -51,6 +61,10 @@ def load(path=DEFAULT_PATH):
                 if not (isinstance(entry, list) and len(entry) == 2):
                     raise ValueError(f"pose entry must be [servo_id, position]: {entry}")
                 clamped = max(0, min(1000, int(entry[1])))
+                if entry[0] == SERVO_GRIPPER and clamped != GRIPPER_SCAN_OPEN:
+                    print(f"[scan_poses_store] forcing {labels[pose_idx]} gripper open: "
+                          f"{entry[1]} → {GRIPPER_SCAN_OPEN}")
+                    clamped = GRIPPER_SCAN_OPEN
                 if clamped != entry[1]:
                     print(f"[scan_poses_store] clamped {labels[pose_idx]} servo {entry[0]}: "
                           f"{entry[1]} → {clamped}")
@@ -63,7 +77,11 @@ def load(path=DEFAULT_PATH):
 
 def save_pose(name, pose, path=DEFAULT_PATH):
     """Snapshot or update one named pose. Other named poses are preserved.
-    `pose` is the [[sid,pos], …] form already."""
+    `pose` is the [[sid,pos], …] form already. The gripper entry is forced
+    open (see GRIPPER_SCAN_OPEN) — the taught claw position is whatever the
+    operator's hand left it at, never what scanning wants."""
+    pose = [[sid, GRIPPER_SCAN_OPEN if sid == SERVO_GRIPPER else pos]
+            for sid, pos in pose]
     data = {}
     if os.path.exists(path):
         try:

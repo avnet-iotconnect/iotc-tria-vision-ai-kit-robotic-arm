@@ -44,7 +44,10 @@ def make_mode(name: str) -> Mode:
         here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         custom = os.path.join(here, "model", "ball_best.tflite")
         if os.path.exists(custom):
-            model_path, conf = custom, 0.7
+            # 0.5 (was 0.7): a ball partially cut off at the frame edge scores
+            # ~0.4-0.5 while fully-visible detections sit at 0.95+, so 0.5
+            # keeps tracking sticky at the edges without admitting noise.
+            model_path, conf = custom, 0.5
         else:
             model_path, conf = "/etc/models/yolox_quantized.tflite", 0.25
         # main.py has no --conf/--model flags, so allow overriding the YOLO

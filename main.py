@@ -29,6 +29,7 @@ import cv2
 import numpy as np
 
 import camera_settings as cam_settings
+import grab_threshold_store
 import scan_poses_store
 import systemdata
 import xarm
@@ -722,6 +723,45 @@ def process_iotconnect_commands(arm):
                         cam_settings.update_one(name, casted)
                         cam_settings.mark_dirty()  # capture thread re-applies on next iteration
                         ack_message = f"camera_setting: {name}={casted} (saved + applied)"
+            elif command_name == 'set_grab_threshold':
+                # `set_grab_threshold 800` (positional) or {"value": 800}.
+                # Persists to grab_threshold.json AND applies live — the yolo
+                # modes re-read the store every frame, no mode restart needed.
+                value = _extract_arg(command_args, 'value', 'threshold', 'd')
+                try:
+                    v = grab_threshold_store.set_value(value)
+                    ack_message = (f"grab gate now D >= {v:g} "
+                                   "(applied live, persisted)")
+                except (TypeError, ValueError) as e:
+                    ack_status = C2dAck.CMD_FAILED
+                    ack_message = f"set_grab_threshold: invalid value '{value}': {e}"
+            elif command_name == 'set_grab_gate':
+                # `set_grab_gate both` — which signals must agree before the
+                # grab fires: depth | radius | both. Live, no restart.
+                value = _extract_arg(command_args, 'mode', 'value')
+                try:
+                    m = grab_threshold_store.set_mode(value)
+                    ack_message = f"grab gate mode now '{m}' — {grab_threshold_store.describe()}"
+                except (TypeError, ValueError) as e:
+                    ack_status = C2dAck.CMD_FAILED
+                    ack_message = f"set_grab_gate: {e}"
+            elif command_name == 'set_grab_radius':
+                # `set_grab_radius 200` (px floor target) or `set_grab_radius
+                # auto` to track the taught ball_r_at_grab. Live, no restart.
+                value = _extract_arg(command_args, 'value', 'radius', 'r')
+                try:
+                    r = grab_threshold_store.set_radius(value)
+                    ack_message = (f"grab radius target now "
+                                   f"{f'{r:g}px' if r is not None else 'auto (taught)'} "
+                                   f"— {grab_threshold_store.describe()}")
+                except (TypeError, ValueError) as e:
+                    ack_status = C2dAck.CMD_FAILED
+                    ack_message = f"set_grab_radius: invalid value '{value}': {e}"
+            elif command_name == 'grab_threshold_show':
+                ack_message = f"grab gate: {grab_threshold_store.describe()}"
+            elif command_name == 'grab_threshold_reset':
+                grab_threshold_store.reset()
+                ack_message = f"grab gate reset to defaults: {grab_threshold_store.describe()}"
             elif command_name == 'camera_settings_show':
                 ack_message = f"camera_settings: {json.dumps(cam_settings.load())}"
             elif command_name == 'camera_settings_reset':

@@ -253,13 +253,16 @@ def main():
             print(f"[teach-grab] {'OK' if ok else 'FAIL'}: {msg}")
             tgw.update_status(torque=torque_on[0], msg=msg)
 
-        tgw = TeachGrabWebView(args.web_port, web_action)
-        # The background `loop` already publishes to `web` (the demo WebView).
-        # Re-point it at the teach view so the operator sees the live feed
-        # with overlay AND has the action buttons.
+        # Stop the plain preview WebView BEFORE binding the teach view — both
+        # use args.web_port, so constructing TeachGrabWebView first hits
+        # EADDRINUSE against our own preview server. The background loop's
+        # publish is try/except-guarded, so the brief serverless gap is fine.
         if web is not None:
             try: web.stop()
             except Exception: pass
+        tgw = TeachGrabWebView(args.web_port, web_action)
+        # Re-point the background loop at the teach view so the operator sees
+        # the live feed with overlay AND has the action buttons.
         web = tgw  # noqa - the background loop publishes via `web`
         # Inject a refresh of the published status (torque + ball + D) once a
         # second so the page header stays accurate without a publish() override.

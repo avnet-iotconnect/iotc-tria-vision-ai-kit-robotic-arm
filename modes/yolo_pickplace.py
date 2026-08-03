@@ -24,6 +24,7 @@ import time
 import cv2
 import numpy as np
 
+import grab_threshold_store
 from . import ball_follow as bf
 from .ball_follow import BallFollowMode
 from .pickplace import PickPlaceMode
@@ -103,45 +104,28 @@ class YoloBallFollowMode(BallFollowMode):
         self._depth_ms_ewma = 0.0
         self._frame_ms_ewma = 0.0
         self._last_frame_t = None
-        if depth_detector is not None and os.path.exists(GRAB_DEPTH_PATH):
+        # Taught reference from teach_grab_depth.py — D_grab feeds telemetry,
+        # ball_r_at_grab is the auto radius target for the radius gate.
+        self.r_grab_taught = None
+        if os.path.exists(GRAB_DEPTH_PATH):
             try:
                 with open(GRAB_DEPTH_PATH) as f:
                     cfg = json.load(f)
                 self.D_grab = float(cfg["D_grab"])
                 self.D_tolerance = max(
                     DEPTH_TOL_FLOOR, DEPTH_TOL_MULT * float(cfg.get("D_stdev", DEPTH_TOL_FLOOR)))
-                print(f"[yolo-ball] depth gate ARMED: D_grab={self.D_grab:.0f} "
-                      f"+/-{self.D_tolerance:.0f}  (descent + grab keyed on depth, "
-                      f"not pixel-radius)")
+                r = cfg.get("ball_r_at_grab")
+                self.r_grab_taught = float(r) if r else None
+                r_str = (f"{self.r_grab_taught:.0f}px"
+                         if self.r_grab_taught else "n/a")
+                print(f"[yolo-ball] taught reference loaded: D_grab={self.D_grab:.0f} "
+                      f"+/-{self.D_tolerance:.0f}, ball_r_at_grab={r_str}")
             except Exception as e:
-                print(f"[yolo-ball] could not load {GRAB_DEPTH_PATH}: {e} "
-                      "— falling back to pixel-radius gate")
+                print(f"[yolo-ball] could not load {GRAB_DEPTH_PATH}: {e}")
+        print(f"[yolo-ball] grab gate ARMED: {grab_threshold_store.describe()}  "
+              f"(set_grab_gate / set_grab_threshold / set_grab_radius to change)")
 
     def setup(self, arm):
-        import scan_poses_store
-        loaded_poses, loaded_labels = scan_poses_store.load()
-        if loaded_poses:
-            self.scan_poses = loaded_poses
-            self.scan_pose_labels = loaded_labels
-            print(f"[yolo-ball] using {len(loaded_poses)} scan poses from disk: {loaded_labels}")
-        else:
-            self.scan_poses = bf.SCAN_POSES
-            self.scan_pose_labels = bf.SCAN_POSE_LABELS
-
-        import cam_gripper_offset_store
-        ofs = cam_gripper_offset_store.load()
-        if ofs:
-            self.cam_gripper_offset_x = int(ofs.get('cam_gripper_offset_x', bf.CAM_GRIPPER_OFFSET_X))
-            self.cam_gripper_offset_y = int(ofs.get('cam_gripper_offset_y', bf.CAM_GRIPPER_OFFSET_Y))
-            self.target_radius_px = int(ofs.get('target_radius_px', bf.TARGET_RADIUS_PX))
-            print(f"[yolo-ball] cam-gripper offset loaded: "
-                  f"x={self.cam_gripper_offset_x} y={self.cam_gripper_offset_y} "
-                  f"target_r={self.target_radius_px}")
-        else:
-            self.cam_gripper_offset_x = bf.CAM_GRIPPER_OFFSET_X
-            self.cam_gripper_offset_y = bf.CAM_GRIPPER_OFFSET_Y
-            self.target_radius_px = bf.TARGET_RADIUS_PX
-
         # No ball_color.json — YOLO needs no HSV calibration. Just take up the
         # first scan pose like the parent does.
         print(f"[yolo-ball] moving to scan pose [{self.scan_pose_labels[0]}]...")
@@ -163,8 +147,8 @@ class YoloBallFollowMode(BallFollowMode):
 
         self.frame_count += 1
         h, w = frame.shape[:2]
-        cx_target = w // 2 + self.cam_gripper_offset_x
-        cy_target = h // 2 + self.cam_gripper_offset_y
+        cx_target = w // 2 + bf.CAM_GRIPPER_OFFSET_X
+        cy_target = h // 2 + bf.CAM_GRIPPER_OFFSET_Y
 
         try:
             pos = bf._read_all_positions(arm)
@@ -228,15 +212,12 @@ class YoloBallFollowMode(BallFollowMode):
 
         if ball is None:
             self.no_ball_frames += 1
-            self._depth_settle = 0  # reset settle counter so re-acquisition needs fresh consecutive frames
-            self.last_depth_at_ball_smoothed = None  # reset EWMA so cold-start doesn't count toward settle
             label = self.scan_pose_labels[self.scan_idx]
             self._log(f"SCAN[{label}]: no ball ({self.no_ball_frames})")
             cv2.putText(annotated, f"scan {label}  no ball ({self.no_ball_frames})", (10, 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2, cv2.LINE_AA)
             self.state = "SCANNING"
             self.last_is_prediction = False
-            self._approach_blocked_frames = 0
             if self.no_ball_frames >= bf.NO_BALL_GRACE_FRAMES:
                 now = time.time()
                 next_advance_at = self.last_scan_move_at + (bf.SCAN_MOVE_MS / 1000.0) + bf.SCAN_DWELL_S
@@ -279,10 +260,9 @@ class YoloBallFollowMode(BallFollowMode):
                         D_EWMA_ALPHA * self.last_depth_at_ball
                         + (1 - D_EWMA_ALPHA) * self.last_depth_at_ball_smoothed)
             except Exception as e:
-                print(f"[yolo-ball] depth inference failed: {e} — falling back to pixel-radius gate")
+                print(f"[yolo-ball] depth inference failed: {e}")
                 self.last_depth_at_ball = None
                 self.last_depth_at_ball_smoothed = None
-                self._depth_settle = 0
         # NPU perf EWMAs (alpha=0.1 = ~10-frame moving average)
         a = 0.1
         self._yolo_ms_ewma = a * (t_detect * 1000.0) + (1 - a) * self._yolo_ms_ewma
@@ -297,7 +277,7 @@ class YoloBallFollowMode(BallFollowMode):
                         (0, 165, 255), 2, cv2.LINE_AA)
         pan_err = bx - cx_target
         tilt_err = by - cy_target
-        radius_err = self.target_radius_px - br
+        radius_err = bf.TARGET_RADIUS_PX - br
         centered_ok = abs(pan_err) <= bf.CENTER_DEADBAND_PX and abs(tilt_err) <= bf.CENTER_DEADBAND_PX
         approach_centered_ok = abs(pan_err) <= bf.APPROACH_DEADBAND_PX and abs(tilt_err) <= bf.APPROACH_DEADBAND_PX
         radius_ok = abs(radius_err) <= bf.RADIUS_TOLERANCE
@@ -312,48 +292,55 @@ class YoloBallFollowMode(BallFollowMode):
             self._centered_streak -= 1
         centered_latched = centered_ok or self._centered_streak > 0
 
-        # Pick the gate signal: depth (when teach is loaded AND we have a live
-        # D) or the legacy pixel-radius fallback.
-        depth_armed = self.D_grab is not None
-        # Use EWMA-smoothed D for the gate (MiDaS has ~20-unit single-frame
-        # noise). last_depth_at_ball is the raw value, last_depth_at_ball_smoothed
-        # is what the control law actually checks.
+        # Gate configuration (grab_threshold_store — live-settable from the
+        # cloud, re-read every frame so changes apply instantly): a depth
+        # floor, a radius floor, and a mode choosing which must agree.
+        # Radius target 'auto' = taught ball_r_at_grab from grab_depth.json,
+        # else TARGET_RADIUS_PX. Radius is the steadier signal (known-size
+        # ball: r_px ∝ 1/distance); INT8 MiDaS re-scales per frame.
+        D_threshold = grab_threshold_store.get()
+        gate_mode = grab_threshold_store.get_mode()
+        r_target = grab_threshold_store.get_radius()
+        if r_target is None:
+            r_target = self.r_grab_taught or bf.TARGET_RADIUS_PX
+        r_floor = r_target - bf.RADIUS_TOLERANCE
+        # Use EWMA-smoothed D for the depth signal (MiDaS has ~20-unit
+        # single-frame noise); raw value kept for the overlay.
         D = self.last_depth_at_ball_smoothed
         D_raw = self.last_depth_at_ball
-        # Gate is a floor: any D at or above (D_grab - tol) fires. Removing
-        # the upper bound means an overshoot toward the ball (closer than
-        # taught) still counts as "ready to grab" — closer is better, never
-        # worse, for ball pickup.
-        depth_ok = depth_armed and D is not None and D >= self.D_grab - self.D_tolerance
-        use_depth = depth_armed and D is not None
-        # Settling: count consecutive depth_ok frames. Grab only fires once D
-        # has been in-window for DEPTH_SETTLE_FRAMES in a row, so a transient
-        # mid-descent crossing or a noisy MiDaS sample can't fire the grab.
-        if depth_ok:
+        use_depth = self.depth is not None and D is not None
+        # Both signals are FLOORS with no upper bound — overshooting toward
+        # the ball (bigger r, higher D) still counts as "ready to grab";
+        # closer is better, never worse, for ball pickup.
+        depth_ok = use_depth and D >= D_threshold
+        radius_gate_ok = br >= r_floor
+        if gate_mode == 'radius' or not use_depth:
+            gate_ok_now = radius_gate_ok
+            too_far = br < r_floor
+        elif gate_mode == 'depth':
+            gate_ok_now = depth_ok
+            too_far = D < D_threshold
+        else:  # 'both': grab only when BOTH agree; descend while EITHER is far
+            gate_ok_now = depth_ok and radius_gate_ok
+            too_far = (D < D_threshold) or (br < r_floor)
+        # Settling: count consecutive gate-ok frames. Grab only fires once
+        # the gate has held for DEPTH_SETTLE_FRAMES in a row, so a transient
+        # mid-descent crossing or one noisy sample can't fire it.
+        if gate_ok_now:
             self._depth_settle += 1
         else:
             self._depth_settle = 0
-        depth_settled = self._depth_settle >= DEPTH_SETTLE_FRAMES
-        grab_gate_ok = depth_settled if use_depth else radius_ok
-        # Descent: too far → keep approaching. Uses smoothed D too so we
-        # don't flip-flop the descent on a noisy frame.
-        too_far = (D < self.D_grab - self.D_tolerance) if use_depth \
-                  else (br < self.target_radius_px - bf.RADIUS_TOLERANCE)
+        grab_gate_ok = self._depth_settle >= DEPTH_SETTLE_FRAMES
 
         cv2.putText(annotated,
                     f"r={int(br)} dx={pan_err:+d} dy={tilt_err:+d}",
                     (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2, cv2.LINE_AA)
-        if use_depth:
-            settle_str = (f"settle {self._depth_settle}/{DEPTH_SETTLE_FRAMES}"
-                          if depth_ok else "depth=NO")
-            d_threshold = self.D_grab - self.D_tolerance
-            gate_line = (f"center={'OK' if centered_ok else 'NO'}  "
-                         f"{settle_str} "
-                         f"(D >= {d_threshold:.0f}, target {self.D_grab:.0f})")
-        else:
-            gate_line = (f"center={'OK' if centered_ok else 'NO'}  "
-                         f"radius={'OK' if radius_ok else 'NO'} "
-                         f"(target={self.target_radius_px}+/-{bf.RADIUS_TOLERANCE})")
+        settle_str = (f"settle {self._depth_settle}/{DEPTH_SETTLE_FRAMES}"
+                      if gate_ok_now else "gate=NO")
+        gate_line = (f"center={'OK' if centered_ok else 'NO'}  {settle_str}  "
+                     f"[{gate_mode}] D{'+' if depth_ok else '-'}"
+                     f">={D_threshold:g} r{'+' if radius_gate_ok else '-'}"
+                     f">={r_floor:.0f}")
         cv2.putText(annotated, gate_line, (10, 55),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.55,
                     (0, 255, 0) if centered_latched and grab_gate_ok else (0, 200, 255),
@@ -413,18 +400,10 @@ class YoloBallFollowMode(BallFollowMode):
             d_elbow += int(round(d_tilt * bf.TILT_ELBOW_RATIO)) * bf.TILT_ELBOW_DIR
         if approach_centered_ok and too_far:
             if pos[bf.SERVO_SHOULDER_LIFT] >= bf.LIFT_MAX or pos[bf.SERVO_ELBOW_FLEX] >= bf.ELBOW_MAX:
-                self._approach_blocked_frames += 1
                 gate_state = (f"D={D:.0f} target={self.D_grab:.0f}" if use_depth
-                              else f"r={int(br)} target={self.target_radius_px}")
-                self._log(f"APPROACH-BLOCKED: lift={pos[bf.SERVO_SHOULDER_LIFT]}>={bf.LIFT_MAX} or elbow={pos[bf.SERVO_ELBOW_FLEX]}>={bf.ELBOW_MAX}; {gate_state} ({self._approach_blocked_frames}/{bf.APPROACH_BLOCKED_TIMEOUT_FRAMES})")
-                if self._approach_blocked_frames >= bf.APPROACH_BLOCKED_TIMEOUT_FRAMES:
-                    print(f"[yolo-ball] APPROACH-BLOCKED for {self._approach_blocked_frames} frames — resetting to scan")
-                    self._approach_blocked_frames = 0
-                    self.state = "SCANNING"
-                    self.no_ball_frames = bf.NO_BALL_GRACE_FRAMES
-                    self.last_scan_move_at = 0.0
+                              else f"r={int(br)} target={bf.TARGET_RADIUS_PX}")
+                self._log(f"APPROACH-BLOCKED: lift={pos[bf.SERVO_SHOULDER_LIFT]}>={bf.LIFT_MAX} or elbow={pos[bf.SERVO_ELBOW_FLEX]}>={bf.ELBOW_MAX}; {gate_state}")
             else:
-                self._approach_blocked_frames = 0
                 d_lift = bf.APPROACH_STEP
                 d_elbow += int(round(bf.APPROACH_STEP * bf.ELBOW_REACH_RATIO))
                 if d_tilt == 0 and tilt_err != 0:
@@ -438,9 +417,7 @@ class YoloBallFollowMode(BallFollowMode):
             targets.append([bf.SERVO_SHOULDER_PAN,
                             bf._clamp(pos[bf.SERVO_SHOULDER_PAN] + d_pan, lo=bf.PAN_MIN, hi=bf.PAN_MAX)])
         if d_tilt:
-            new_tilt = bf._clamp(pos[bf.SERVO_WRIST_FLEX] + d_tilt)
-            if new_tilt != pos[bf.SERVO_WRIST_FLEX]:
-                targets.append([bf.SERVO_WRIST_FLEX, new_tilt])
+            targets.append([bf.SERVO_WRIST_FLEX, bf._clamp(pos[bf.SERVO_WRIST_FLEX] + d_tilt)])
         if d_lift:
             targets.append([bf.SERVO_SHOULDER_LIFT, bf._clamp(pos[bf.SERVO_SHOULDER_LIFT] + d_lift, hi=bf.LIFT_MAX)])
         if d_elbow:
@@ -487,6 +464,10 @@ class YoloBallFollowMode(BallFollowMode):
             "depth_at_ball_smoothed": (round(float(self.last_depth_at_ball_smoothed), 1)
                                        if self.last_depth_at_ball_smoothed is not None else 0.0),
             "depth_settle": int(self._depth_settle),
+            "D_threshold": float(grab_threshold_store.get()),
+            "gate_mode": grab_threshold_store.get_mode(),
+            "r_target": float(grab_threshold_store.get_radius()
+                              or self.r_grab_taught or bf.TARGET_RADIUS_PX),
             "D_grab": float(self.D_grab) if self.D_grab is not None else 0.0,
             "D_tolerance": float(self.D_tolerance) if self.D_tolerance is not None else 0.0,
         })
