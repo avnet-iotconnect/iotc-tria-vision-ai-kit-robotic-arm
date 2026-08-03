@@ -27,3 +27,8 @@ matplotlib>=3.4.0
 
 psutil
 py-cpuinfo
+
+# KVS WebRTC streaming
+aiortc>=1.6.0
+websockets>=11.0
+boto3>=1.26.0

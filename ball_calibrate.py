@@ -26,11 +26,15 @@ import cv2
 import numpy as np
 import xarm
 
-DEFAULT_OUT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ball_color.json")
+OUT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ball_color.json")
 PATCH_RADIUS = 3      # 7x7 sample patch around each click
-HUE_PAD = 8           # extra hue tolerance on each side
+HUE_PAD = 15          # extra hue tolerance on each side
 SAT_PAD = 25
-VAL_PAD = 25
+VAL_PAD = 30
+# For near-achromatic colors (white, grey) the hue channel is unreliable/noisy at low
+# saturation — hue is well-defined only when S > ~30. When the average sampled
+# saturation is below this threshold the hue range is opened to 0-180 automatically.
+ACHROMATIC_SAT_THRESHOLD = 60
 
 ALL_SERVO_IDS = [1, 2, 3, 4, 5, 6]  # gripper, wrist_roll, wrist_flex, elbow_flex, shoulder_lift, shoulder_pan
 
@@ -47,7 +51,9 @@ def on_mouse(event, x, y, flags, param):
     patch = hsv_frame[y0:y1, x0:x1].reshape(-1, 3)
     med = np.median(patch, axis=0).astype(int)
     samples.append(tuple(med.tolist()))
-    print(f"click @({x},{y}) -> H={med[0]} S={med[1]} V={med[2]}  (samples: {len(samples)})")
+    arr = np.array(samples)
+    note = "  [low-sat: hue→full range]" if float(arr[:, 1].mean()) < ACHROMATIC_SAT_THRESHOLD else ""
+    print(f"click @({x},{y}) -> H={med[0]} S={med[1]} V={med[2]}  (samples: {len(samples)}){note}")
 
 
 def current_range():
@@ -55,7 +61,12 @@ def current_range():
     if not samples:
         return None
     arr = np.array(samples)
-    h_lo, h_hi = arr[:, 0].min() - HUE_PAD, arr[:, 0].max() + HUE_PAD
+    avg_s = float(arr[:, 1].mean())
+    if avg_s < ACHROMATIC_SAT_THRESHOLD:
+        # Near-white/grey: hue is noise at low saturation — use full hue range.
+        h_lo, h_hi = 0, 180
+    else:
+        h_lo, h_hi = arr[:, 0].min() - HUE_PAD, arr[:, 0].max() + HUE_PAD
     s_lo, s_hi = arr[:, 1].min() - SAT_PAD, arr[:, 1].max() + SAT_PAD
     v_lo, v_hi = arr[:, 2].min() - VAL_PAD, arr[:, 2].max() + VAL_PAD
     lower = np.array([max(0, h_lo), max(0, s_lo), max(0, v_lo)], dtype=np.uint8)
@@ -80,7 +91,7 @@ def hold_all(arm):
         print(f"[calib] hold failed: {e}")
 
 
-def save_range(lower, upper, camera_index, out_path):
+def save_range(lower, upper, camera_index):
     payload = {
         "camera_index": int(camera_index),
         "h_min": int(lower[0]), "h_max": int(upper[0]),
@@ -88,9 +99,9 @@ def save_range(lower, upper, camera_index, out_path):
         "v_min": int(lower[2]), "v_max": int(upper[2]),
         "samples": [list(s) for s in samples],
     }
-    with open(out_path, "w") as f:
+    with open(OUT_PATH, "w") as f:
         json.dump(payload, f, indent=2)
-    print(f"\nSaved {len(samples)} samples to {out_path}")
+    print(f"\nSaved {len(samples)} samples to {OUT_PATH}")
     print(f"  HSV lower: {lower.tolist()}")
     print(f"  HSV upper: {upper.tolist()}")
 
@@ -101,26 +112,16 @@ def main():
     parser.add_argument("--camera", type=int, default=2, help="OpenCV camera index (default 2)")
     parser.add_argument("--width", type=int, default=640)
     parser.add_argument("--height", type=int, default=480)
-    parser.add_argument("--output", default=DEFAULT_OUT_PATH,
-                        help="Output JSON path (default ball_color.json — use --output box_color.json to calibrate the box for pickplace mode)")
-    parser.add_argument("--no-prompt", action="store_true",
-                        help="Skip the 'press Enter to release torque' safety prompt. "
-                             "Use ONLY when launched from a panel icon at the board where the user "
-                             "is already supporting the arm. Stdin (input()) is unavailable when "
-                             "launched without a terminal.")
     args = parser.parse_args()
 
     print("[calib] connecting to xArm...")
     arm = xarm.Controller('USB')
 
-    if args.no_prompt:
-        print("[calib] --no-prompt: skipping safety prompt (assuming arm is supported)")
-    else:
-        print("\n" + "=" * 60)
-        print(" SAFETY: ALL torque is about to drop. Support the arm with your")
-        print(" hand before pressing Enter, or it will swing under gravity.")
-        print("=" * 60)
-        input("[calib] Holding the arm? Press Enter to release torque... ")
+    print("\n" + "=" * 60)
+    print(" SAFETY: ALL torque is about to drop. Support the arm with your")
+    print(" hand before pressing Enter, or it will swing under gravity.")
+    print("=" * 60)
+    input("[calib] Holding the arm? Press Enter to release torque... ")
     release_all(arm)
 
     cap = cv2.VideoCapture(args.camera)
@@ -136,6 +137,8 @@ def main():
     cv2.setMouseCallback(win, on_mouse)
 
     print("Click the ball in the live view. 's' save, 'r' reset, 'h' hold pose (torque on), 'w' release torque, 'q'/ESC quit.")
+    print("TIP for white/grey balls: hue is automatically set to full range when avg saturation < 60.")
+    print("     Click 5-10 spots across the ball surface including any slightly shadowed areas.")
     while True:
         ok, frame = cap.read()
         if not ok:
@@ -174,7 +177,7 @@ def main():
             if rng is None:
                 print("Nothing to save yet — click the ball first.")
                 continue
-            save_range(rng[0], rng[1], args.camera, args.output)
+            save_range(rng[0], rng[1], args.camera)
             break
 
     cap.release()

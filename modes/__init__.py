@@ -16,7 +16,7 @@ The YOLO modes lazy-import detectors so the legacy CPU modes don't drag in
 ``model/ball_best.tflite`` if present, falling back to the stock board model
 ``/etc/models/yolox_quantized.tflite``. Depth is enabled when
 ``/etc/models/midas_quantized.tflite`` exists; the depth-gated grab activates
-when ``grab_depth.json`` is also present (see RUNBOOK_YOLO.txt).
+when ``grab_depth.json`` is also present (see README.md — Demo 3).
 """
 
 import os
