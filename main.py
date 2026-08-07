@@ -626,8 +626,12 @@ def process_iotconnect_commands(arm):
                     ack_message = f"servoOff failed: {e}"
             elif command_name == 'hold_pose':
                 # Re-engage torque at whatever pose the arm is currently in.
+                # Clamp to 0-1000 (like teach_scan_pose/teach_drop_pose): hand-
+                # posing a joint past its hard stop makes a servo read >1000,
+                # which setPosition rejects — without the clamp hold_pose fails
+                # and torque stays off mid-teach.
                 try:
-                    targets = [[sid, int(arm.getPosition(sid))] for sid in range(1, 7)]
+                    targets = [[sid, max(0, min(1000, int(arm.getPosition(sid))))] for sid in range(1, 7)]
                     arm.setPosition(targets, duration=1500, wait=True)
                     ack_message = f"torque re-engaged at current pose: {targets}"
                 except Exception as e:
