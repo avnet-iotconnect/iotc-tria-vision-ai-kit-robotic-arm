@@ -1,8 +1,8 @@
-# Tria VisionAI Kit 6490 + IOTCONNECT — XArm Vision Demos
+# Tria VisionAI Kit 6490 + /IOTCONNECT — XArm Vision Demos
 
 Three independent vision-driven robotic-arm demos that all run on the same
 **Tria VisionAI Kit 6490** (Qualcomm QCS6490 SoC) board and stream telemetry +
-accept remote commands through **IOTCONNECT**. Each demo highlights a
+accept remote commands through **/IOTCONNECT**. Each demo highlights a
 different rung of perception sophistication on the same hardware:
 
 ```
@@ -162,7 +162,7 @@ ls -lh model/point_net_1.pth   # should be ~38–42 MB
 
 Demo #1 will refuse to start with a clear error if this file is absent.
 
-### 4. IOTCONNECT Onboarding
+### 4. /IOTCONNECT Onboarding
 
 > [!IMPORTANT]
 > If you intend to run this demo with the `--webrtc` flag to enable live video
@@ -280,7 +280,7 @@ Watch the live stream at `http://<board-ip>:8080/` if running `--web-port`.
 
 **Startup sequence:**
 1. App connects to the xArm and moves to the home/center pose.
-2. IoTConnect connects (if certs are in the project root).
+2. /IOTCONNECT connects (if certs are in the project root).
 3. PointNet loads from `model/point_net_1.pth` (~2–3 seconds).
 4. Camera loop starts. The OSD is blank until a hand appears.
 
@@ -334,7 +334,7 @@ Sent on every gesture-triggered arm action and every 2 seconds while running.
 | `sysInfo_storage` | Disk usage |
 | `sysInfo_gpu` | Adreno GPU % (near zero — workload is on CPU) |
 
-If fields are missing from the IOTCONNECT dashboard, verify they are declared on
+If fields are missing from the /IOTCONNECT dashboard, verify they are declared on
 the device template — the broker silently drops undeclared attributes.
 
 ---
@@ -570,7 +570,7 @@ on the Hexagon NPU**:
 
 Combined NPU load: **~7 ms YOLO + ~5 ms depth per frame** through the QNN TFLite
 delegate, leaving the CPU free for the control loop. Live latency, fps, and depth
-values stream to IOTCONNECT as telemetry.
+values stream to /IOTCONNECT as telemetry.
 
 **Best for:** showing the QCS6490 Hexagon NPU doing real, useful AI work that the
 CPU-only demo can't — with side-by-side comparison via demo #2.
@@ -714,7 +714,7 @@ not the Adreno graphics GPU. NPU activity is visible through `yolo_ms` and
 
 ## Remote Commands (All Modes)
 
-These commands work via IOTCONNECT regardless of which demo is running:
+These commands work via /IOTCONNECT regardless of which demo is running:
 
 | Command | Effect |
 |---------|--------|
@@ -736,13 +736,13 @@ These commands work via IOTCONNECT regardless of which demo is running:
 
 ## Live WebRTC Video Streaming (Optional)
 
-Any demo can stream the wrist-camera feed live to the IOTCONNECT portal using
+Any demo can stream the wrist-camera feed live to the /IOTCONNECT portal using
 AWS Kinesis Video Streams (KVS) WebRTC. This is entirely opt-in and does not
 affect vision or arm control when unused.
 
 ### Prerequisites
 
-Your device **must** be created in IOTCONNECT using the `robarmwebrtc` template
+Your device **must** be created in /IOTCONNECT using the `robarmwebrtc` template
 (`robarmwebrtc-template.json` in this repo). During device creation, when
 prompted to select a **Stream Resource**, choose **WebRTC**. This choice cannot
 be changed after device creation — if your device was created with a different
@@ -758,7 +758,7 @@ python3 main.py --mode ball --webrtc
 python3 main.py --mode asl --webrtc --headless
 ```
 
-When connected, the stream appears in the IOTCONNECT portal under your device's
+When connected, the stream appears in the /IOTCONNECT portal under your device's
 live view. The wrist-camera feed updates at ~15 fps independent of the main
 vision loop so arm moves don't stall the stream.
 
@@ -781,10 +781,10 @@ model doesn't recognize your specific ball.
 - [TRIA Vision AI-KIT 6490 Product Page](https://www.newark.com/avnet/sm2-sk-qcs6490-ep6-kit001/dev-kit-64bit-arm-cortex-a55-a78/dp/51AM9843) — Hardware specifications and purchase information
 - [TRIA Startup Guide](https://avnet.com/wcm/connect/137a97f1-eb6e-48ba-89a4-40b024558593/Vision+AI-KIT+6490+Startup+Guide+v1.3.pdf?MOD=AJPERES&attachment=true&id=1761931434976) — Hardware setup and cable connections
 
-### IOTCONNECT
-- [IOTCONNECT Python SDK](https://github.com/avnet-iotconnect/avnet-iotconnect-python-sdk) — IOTCONNECT Python SDK for cloud connectivity
-- [IOTCONNECT Device Onboarding](https://github.com/avnet-iotconnect/iotc-python-lite-sdk-demos/blob/main/common/general-guides/UI-ONBOARD.md) — Step-by-step device registration guide
-- [IOTCONNECT Platform](https://www.iotconnect.io/) — Enterprise IoT platform information
+### /IOTCONNECT
+- [/IOTCONNECT Python SDK](https://github.com/avnet-iotconnect/avnet-iotconnect-python-sdk) — /IOTCONNECT Python SDK for cloud connectivity
+- [/IOTCONNECT Device Onboarding](https://github.com/avnet-iotconnect/iotc-python-lite-sdk-demos/blob/main/common/general-guides/UI-ONBOARD.md) — Step-by-step device registration guide
+- [/IOTCONNECT Platform](https://www.iotconnect.io/) — Enterprise IoT platform information
 
 ### Robotics & AI
 - [xArm Python Library](https://github.com/xArm-Developer/xArm-Python-SDK) — Official Python SDK for Hiwonder XArm robotic arms
