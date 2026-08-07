@@ -33,6 +33,8 @@ drop_pose.json
 scan_poses.json
 camera_settings.json
 cam_gripper_offset.json
+grab_depth.json
+grab_threshold.json
 iotcDeviceConfig.json
 device-cert.pem
 device-pkey.pem
