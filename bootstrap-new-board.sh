@@ -229,6 +229,24 @@ else
     echo "[6/6] no Weston running ($WESTON_INI not found) — skipping panel setup"
 fi
 
+# ---------------------------------------------------------------------------
+# Auto-start service: boot the demo in IDLE (arm still, cloud up), recover
+# from USB drops, and wait for DNS so a cold boot on a slow network still
+# connects to IoTConnect. Enabled (not started) — it starts on next boot,
+# after you've connected hardware + dropped in credentials.
+# ---------------------------------------------------------------------------
+if command -v systemctl >/dev/null 2>&1; then
+    echo "[+] installing robotarm autostart service"
+    install -m 0755 "$PROJECT_DIR/deploy/arm_watchdog.sh" /root/arm_watchdog.sh
+    install -m 0644 "$PROJECT_DIR/deploy/robotarm.service" /etc/systemd/system/robotarm.service
+    systemctl daemon-reload
+    systemctl enable robotarm.service
+    echo "    enabled robotarm.service — boots the app in IDLE on power-up."
+    echo "    (start now with: systemctl start robotarm.service)"
+else
+    echo "[+] no systemctl — skipping autostart service (launch manually via start.sh)"
+fi
+
 echo
 echo "=================================================================="
 echo "  Bootstrap complete."
@@ -259,9 +277,13 @@ echo "       /root/miniforge3/envs/$CONDA_ENV/bin/python3 -c \\"
 echo "         \"import xarm; a = xarm.Controller('USB'); a.setPosition([[i,500] for i in range(1,7)], duration=2000, wait=True)\""
 echo "     Watch the arm — it should move to neutral pose."
 echo
-echo "  5. Start the demo (in IDLE so you can drive everything from cloud):"
-echo "       cd $PROJECT_DIR"
-echo "       ./start.sh --mode idle --camera 2 --headless --web-port 8000"
+echo "  5. Start the demo — it AUTO-STARTS on boot in IDLE (arm still, cloud up)"
+echo "     via robotarm.service. To start it now without rebooting:"
+echo "       systemctl start robotarm.service"
+echo "     Then from the IoTConnect dashboard, begin/stop movement with:"
+echo "       set_mode mode=yolo-pickplace   (start)"
+echo "       set_mode mode=idle             (stop, back to safe idle)"
+echo "     Logs: /tmp/yolo.log (app), /tmp/watchdog.log (supervisor)."
 echo
 echo "  6. From the IoTConnect dashboard, run calibrations in this order:"
 echo "       calibrate_ball       (clicks open browser at http://<board-ip>:8000)"
