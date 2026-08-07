@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Avnet
 """List all USB devices to find XArm VID/PID."""
 import usb.core
 import usb.util

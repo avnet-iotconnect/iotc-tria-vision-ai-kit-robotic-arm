@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Avnet
 """Capture training images of the ball(s) from the wrist camera.
 
 Browser-controlled: open the live preview, then use the on-page buttons to

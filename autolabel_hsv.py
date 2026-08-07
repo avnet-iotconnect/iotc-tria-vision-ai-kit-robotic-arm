@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Avnet
 """Auto-generate YOLO-format draft labels for the ball dataset using HSV color
 detection. Produces draft boxes you then review/correct in labelImg.
 

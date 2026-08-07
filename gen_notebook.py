@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Avnet
 """Generate train_ball_colab.ipynb. Run: python gen_notebook.py"""
 import json
 

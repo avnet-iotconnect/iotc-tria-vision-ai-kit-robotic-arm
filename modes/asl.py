@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Avnet
 """ASL gesture-recognition mode.
 
 Wraps the original MediaPipe + PointNet pipeline. Per-frame: detect hands,

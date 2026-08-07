@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Avnet
 """Model bootstrap notes for the YOLO (Hexagon NPU) pick-place app.
 
 On the Tria QCS6490 board the NPU runtime is TFLite + the QNN HTP delegate, and

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Avnet
 """Persistent override for the scan-pose list used by ball + pickplace modes.
 
 Default scan poses live in `modes/ball_follow.py` (calibrated for the original

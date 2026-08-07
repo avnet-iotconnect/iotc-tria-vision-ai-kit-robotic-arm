@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Avnet
 """MJPEG streamer + control buttons for the dataset capture tool.
 
 Separate from web_view.py (which is view-only and shared with the demo) so the

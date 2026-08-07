@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Avnet
 """Vision-mode strategy registry.
 
 Each mode owns its own model loading, per-frame inference, and arm-control

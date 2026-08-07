@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Avnet
 """One-shot detector self-test — NO arm motion.
 
 Grabs a frame from the camera, runs the TFLite+QNN detector over ALL COCO

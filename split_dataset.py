@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Avnet
 """Split the labeled ball dataset into train/val and write an Ultralytics
 data.yaml. No file moving — produces train.txt / val.txt lists of image paths
 (Ultralytics finds each label by swapping /images/ -> /labels/).

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Avnet
 """Browser server for teach_grab_depth.py's --web-driven mode.
 
 Same shape as capture_web.py (MJPEG stream + on-page buttons + /action

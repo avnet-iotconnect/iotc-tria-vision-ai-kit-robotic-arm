@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Avnet
 """Persistent camera tuning, applied identically across the demo + calibrators.
 
 Settings live in `camera_settings.json` next to this file. Anything that opens

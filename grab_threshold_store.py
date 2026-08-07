@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Avnet
 """Persistent, live-settable configuration for the YOLO grab gate.
 
 Three settings, all changeable from IOTCONNECT with no mode restart (the

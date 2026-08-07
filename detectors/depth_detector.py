@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Avnet
 """Monocular depth detector via TFLite + QNN delegate on the Hexagon NPU.
 
 Uses the board's bundled MiDaS-V2 model (`/etc/models/midas_quantized.tflite`)

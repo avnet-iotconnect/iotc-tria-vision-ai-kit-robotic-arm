@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Avnet
 """Depth diagnostic over the running app's MJPEG stream.
 
 Doesn't touch the camera (the demo holds it). Pulls one frame from the

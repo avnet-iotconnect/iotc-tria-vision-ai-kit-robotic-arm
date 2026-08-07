@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Avnet
 """Teach D_grab — the relative-depth value at the ball's centre when the arm
 is in a known grab pose. Run this once, then the runtime depth-gated grab
 uses the saved value (``grab_depth.json``) to decide when to close the gripper.

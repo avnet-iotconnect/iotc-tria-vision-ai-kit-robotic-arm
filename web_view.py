@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Avnet
 """View-only MJPEG streamer for the live demo.
 
 Used by main.py when --web-port is passed: every annotated frame from

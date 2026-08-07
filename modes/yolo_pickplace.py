@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Avnet
 """YOLO-based pick-and-place — NPU-accelerated ball detection.
 
 A separate application that mirrors the HSV pickplace demo but swaps the

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Avnet
 """Pull frames from the running app's MJPEG stream, run depth, and decompose
 the D variance into:
 

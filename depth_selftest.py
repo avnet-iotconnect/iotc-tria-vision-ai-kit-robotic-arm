@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Avnet
 """One-shot depth detector self-test — NO arm motion.
 
 Grabs a frame from the camera, runs MiDaS through the QNN HTP delegate, and

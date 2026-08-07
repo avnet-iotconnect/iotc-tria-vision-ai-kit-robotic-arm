@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Avnet
 """Ball-follow mode (eye-in-hand visual servoing).
 
 Reads HSV thresholds from ball_color.json, segments the ball each frame, and

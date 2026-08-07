@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Avnet
 """Strategy interface for vision modes.
 
 Each mode owns its own model loading, per-frame inference, and arm-control

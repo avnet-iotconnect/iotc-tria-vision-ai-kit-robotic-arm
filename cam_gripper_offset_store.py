@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Avnet
 """Persistent camera-gripper offset + ball-grab radius.
 
 Without calibration, the controller assumes the camera optical axis lines up

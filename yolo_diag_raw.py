@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Avnet
 """Raw-output dump: pull a frame from the running app's web stream and print
 the model's top anchors directly from the interpreter (no class filter, no
 NMS) so we can see boxes/scores/classes and tell a decode bug from a domain

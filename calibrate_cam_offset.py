@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Avnet
 """Calibrate camera-to-gripper offset, wrist view offset, elbow view offset,
 and wrist-roll compensation for ball_follow (upright/table mount).
 

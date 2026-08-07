@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Avnet
 """TFLite + QNN detector for the Tria QCS6490 Hexagon NPU.
 
 Supports two model families, autodetected from the output tensors:

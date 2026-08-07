@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Avnet
 """Browser-based ball/box-color HSV calibrator.
 
 Same output as ball_calibrate.py (writes ball_color.json by default; pass

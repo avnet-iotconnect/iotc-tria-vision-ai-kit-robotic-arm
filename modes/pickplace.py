@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Avnet
 """Pick-and-place mode: locate a box, grab a ball, drop it in the box.
 
 State machine:

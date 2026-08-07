@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Avnet
 """Diagnostic: grab one frame from the running app's MJPEG web view and run
 the detector over ALL classes at a low threshold. Lets us see what the NPU
 model actually outputs for the live scene WITHOUT touching the camera (the

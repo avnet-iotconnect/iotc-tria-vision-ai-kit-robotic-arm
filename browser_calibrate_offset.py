@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Avnet
 """Browser-based camera-gripper offset + grab-radius calibrator.
 
 Same job as calibrate_cam_offset.py but rendered as MJPEG + a small HTML

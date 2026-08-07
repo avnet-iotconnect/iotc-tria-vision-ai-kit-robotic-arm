@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Avnet
 """Probe HSV of detected blobs to separate ball pixels from skin/hand.
 Prints per-blob mean H,S,V + area/fill/aspect for the given images."""
 import sys

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Avnet
 """Reset ball_follow.py to upright/table-mount defaults.
 
 Use this after switching from a horizontal/wall mount back to the standard

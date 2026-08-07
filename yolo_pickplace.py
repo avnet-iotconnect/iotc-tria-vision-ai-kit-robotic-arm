@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Avnet
 """Standalone YOLO pick-and-place app (NPU-accelerated ball detection).
 
 Separate entry point from main.py — it does not register a mode, touch

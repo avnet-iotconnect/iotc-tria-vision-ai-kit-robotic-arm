@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# Copyright (C) 2026 Avnet
 """Teach mode: release servo torque so the arm can be posed by hand,
 then snapshot each of the 6 scan poses for ball-follow mode.
 
