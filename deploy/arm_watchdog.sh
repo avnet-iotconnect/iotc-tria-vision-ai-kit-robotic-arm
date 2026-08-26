@@ -18,6 +18,8 @@
 BASE=/root/iotc-tria-vision-ai-kit-robotic-arm
 LOG=/tmp/watchdog.log
 CONF=0.75          # YOLO confidence used once yolo-pickplace is started; edit to retune per venue
+STARTUP_GRACE=75   # seconds to let start.sh (conda activate takes ~60s on a cold board) bring
+                   # main.py up before the health check runs — prevents duplicate launches
 
 arm_present() { lsusb | grep -q 0483:5750; }
 demo_running() { pgrep -f 'python -u main.py' >/dev/null; }
@@ -28,16 +30,17 @@ wait_network() {
     # cloud at launch. Without this, a cold boot on a slow-DHCP network starts
     # the app before DNS is ready -> IOTCONNECT connect fails -> the app runs
     # "without cloud connectivity" and dashboard set_mode commands never arrive.
-    # Up to ~90s, then launch anyway (a cloud-less demo beats no demo).
+    # Up to ~180s, then launch anyway (a cloud-less demo beats no demo). Venue
+    # DHCP/DNS has been seen to take >90s after a cold boot.
     i=0
-    while [ "$i" -lt 30 ]; do
+    while [ "$i" -lt 60 ]; do
         if getent hosts discovery.iotconnect.io >/dev/null 2>&1; then
             log "network ready (DNS resolves IOTCONNECT)"
             return 0
         fi
         i=$((i + 1)); sleep 3
     done
-    log "network NOT ready after 90s -> launching cloud-less (restart service once network is up)"
+    log "network NOT ready after 180s -> launching cloud-less (restart service once network is up)"
 }
 
 launch_idle() {
@@ -59,15 +62,15 @@ while true; do
             pkill -f 'python -u main.py'; sleep 3
             pkill -9 -f 'python -u main.py' 2>/dev/null; sleep 1
             launch_idle
-            sleep 30
+            sleep "$STARTUP_GRACE"
         elif ! demo_running; then
             now=$(date +%s)
             [ "$dead_since" = 0 ] && dead_since=$now
-            if [ $((now - dead_since)) -ge 30 ]; then
+            if [ $((now - dead_since)) -ge "$STARTUP_GRACE" ]; then
                 log "app not running with healthy arm -> launching idle"
                 launch_idle
                 dead_since=0
-                sleep 30
+                sleep "$STARTUP_GRACE"
             fi
         else
             dead_since=0
