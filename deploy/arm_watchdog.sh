@@ -48,9 +48,18 @@ wait_network() {
 launch_idle() {
     wait_network
     cd "$BASE" || return
+    # Render the annotated OpenCV window on the board's HDMI output (Weston /
+    # Wayland) whenever a vision mode runs, alongside the web stream on :8080.
+    # Without these env vars main.py detects no display and forces headless.
+    # Requires the compositor up (init_display.service); harmless if it isn't
+    # (the app just falls back to headless + web).
+    export XDG_RUNTIME_DIR=/dev/socket/weston
+    export WAYLAND_DISPLAY=wayland-1
+    export QT_QPA_PLATFORM=wayland
+    export LANG=C.UTF-8 LC_ALL=C.UTF-8   # Qt wants a UTF-8 locale
     YOLO_CONF="$CONF" nohup ./start.sh --mode idle --web-port 8080 \
         > /tmp/yolo.log 2>&1 < /dev/null &
-    log "launched app in IDLE (send set_mode mode=yolo-pickplace to start movement)"
+    log "launched app in IDLE (HDMI + web; send set_mode to start movement)"
 }
 
 was_present=0
