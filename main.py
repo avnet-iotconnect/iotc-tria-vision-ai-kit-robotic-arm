@@ -1283,6 +1283,12 @@ def run_mode(arm, mode, camera_index=2, frame_w=640, frame_h=480,
         print(f"[ERROR] Camera failed to open /dev/video{camera_index}. "
               f"Available devices: {device_list}. "
               f"Pass --camera N to specify the correct index.")
+        # Fall back to IDLE instead of exiting the whole app. A camera hiccup
+        # (unplug, USB re-enumeration, wrong index) shouldn't drop IOTCONNECT
+        # and kill the demo — the supervisor sees this stop_mode action and
+        # returns to idle, staying cloud-connected so the operator can re-send
+        # set_mode after the camera is sorted out.
+        set_pending_action(('stop_mode',))
         return
     print(f"[INFO] Camera input: {camera_index} ({frame_w}, {frame_h}) — mode={mode.name} headless={headless}")
 
@@ -1309,6 +1315,13 @@ def run_mode(arm, mode, camera_index=2, frame_w=640, frame_h=480,
     t_proc_sum = 0.0
     t_total_sum = 0.0
     t_window_start = time.time()
+
+    if not headless:
+        # Show the preview fullscreen on the board's HDMI output instead of a
+        # small default-size window in a corner.
+        cv2.namedWindow(window_title, cv2.WINDOW_NORMAL)
+        cv2.setWindowProperty(window_title, cv2.WND_PROP_FULLSCREEN,
+                              cv2.WINDOW_FULLSCREEN)
 
     try:
         # wait briefly for first frame
