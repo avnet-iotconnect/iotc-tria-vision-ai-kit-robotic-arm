@@ -26,21 +26,23 @@ demo_running() { pgrep -f 'python -u main.py' >/dev/null; }
 log() { echo "$(date '+%F %T') $*" >> "$LOG"; }
 
 wait_network() {
-    # Wait for DNS to resolve the IOTCONNECT host so the app connects to the
-    # cloud at launch. Without this, a cold boot on a slow-DHCP network starts
-    # the app before DNS is ready -> IOTCONNECT connect fails -> the app runs
-    # "without cloud connectivity" and dashboard set_mode commands never arrive.
-    # Up to ~180s, then launch anyway (a cloud-less demo beats no demo). Venue
-    # DHCP/DNS has been seen to take >90s after a cold boot.
+    # Wait for BOTH before launching, so the cloud connect succeeds:
+    #   1. DNS resolves the IOTCONNECT host (a cold boot starts before DHCP/DNS
+    #      -> name resolution fails -> app runs "without cloud connectivity").
+    #   2. The clock is NTP-synced (a board with no RTC battery boots with a
+    #      stale clock -> the TLS cert looks "not yet valid" -> SSL verify fails
+    #      -> app runs cloud-less). Year >= 2025 means NTP has set the clock.
+    # Either failure means dashboard set_mode never reaches the device. Up to
+    # ~180s, then launch anyway (a cloud-less demo beats no demo).
     i=0
     while [ "$i" -lt 60 ]; do
-        if getent hosts discovery.iotconnect.io >/dev/null 2>&1; then
-            log "network ready (DNS resolves IOTCONNECT)"
+        if getent hosts discovery.iotconnect.io >/dev/null 2>&1 && [ "$(date +%Y)" -ge 2025 ]; then
+            log "ready (DNS ok, clock=$(date -u +%FT%TZ))"
             return 0
         fi
         i=$((i + 1)); sleep 3
     done
-    log "network NOT ready after 180s -> launching cloud-less (restart service once network is up)"
+    log "not ready after 180s (DNS or clock unsynced) -> launching cloud-less (restart once synced)"
 }
 
 launch_idle() {
