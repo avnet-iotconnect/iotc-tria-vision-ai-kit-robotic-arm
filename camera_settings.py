@@ -154,22 +154,40 @@ def find_brio_index(fallback=2):
     non-Brio rig (or boot without the camera plugged in) is the same as
     before this helper existed."""
     import glob, os
-    candidates = []
-    for path in sorted(glob.glob("/sys/class/video4linux/video*/name")):
+    usb_nodes = []
+    named_nodes = []
+    for path in sorted(glob.glob("/sys/class/video4linux/video*")):
         try:
-            with open(path) as f:
-                name = f.read().strip().lower()
-        except OSError:
+            idx = int(os.path.basename(path).replace("video", ""))
+        except ValueError:
             continue
-        if "brio" in name:
-            try:
-                idx = int(os.path.basename(os.path.dirname(path)).replace("video", ""))
-                candidates.append(idx)
-            except ValueError:
-                continue
-    if candidates:
-        return min(candidates)
-    print(f"[camera] WARNING: no Brio device found in /sys/class/video4linux/*/name — "
+        # A USB webcam's `device` symlink resolves under a .../usb.../ path,
+        # while the Qualcomm platform/codec nodes (video0/1/32/33) do not.
+        # This finds ANY USB camera (Brio, Innomaker U20CAM, eMeet, ...), not
+        # just the Brio. A UVC camera enumerates as a node pair; the lower
+        # index is the capture node, the sibling is a metadata node.
+        try:
+            if "usb" in os.path.realpath(os.path.join(path, "device")):
+                usb_nodes.append(idx)
+        except OSError:
+            pass
+        # Secondary cross-check: match known webcam model strings by name.
+        try:
+            with open(os.path.join(path, "name")) as f:
+                nm = f.read().strip().lower()
+            if any(t in nm for t in ("brio", "innomaker", "u20cam", "webcam",
+                                     "emeet", "vitade", "microdia", "uvc")):
+                named_nodes.append(idx)
+        except OSError:
+            pass
+    both = sorted(set(usb_nodes) & set(named_nodes))
+    if both:
+        return both[0]
+    if usb_nodes:
+        return min(usb_nodes)
+    if named_nodes:
+        return min(named_nodes)
+    print(f"[camera] WARNING: no USB camera found in /sys/class/video4linux — "
           f"falling back to /dev/video{fallback}. "
           f"If that fails, run: v4l2-ctl --list-devices  then pass --camera N")
     return fallback
