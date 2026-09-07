@@ -17,7 +17,7 @@
 # Resume:                                              rm /tmp/demo_watchdog_off
 BASE=/root/iotc-tria-vision-ai-kit-robotic-arm
 LOG=/tmp/watchdog.log
-CONF=0.75          # YOLO confidence used once yolo-pickplace is started; edit to retune per venue
+CONF=0.30          # YOLO confidence used once yolo-pickplace is started; edit to retune per venue
 STARTUP_GRACE=75   # seconds to let start.sh (conda activate takes ~60s on a cold board) bring
                    # main.py up before the health check runs — prevents duplicate launches
 
