@@ -77,9 +77,9 @@ POS_BUFFER_LEN = 5               # how many recent ball positions we keep for ve
 MIN_VELOCITY_PX_PER_FRAME = 2.0  # velocity below this = don't bother predicting
 MAX_PREDICT_FRAMES = 15          # cap predictions so the arm doesn't run away on a bad estimate
 TELEMETRY_INTERVAL_S = 5.0       # how often we publish ball telemetry to /IOTCONNECT — matches device template dataFrequency
-GRIPPER_CLOSE_TARGET = 650  # commanded close position; actual may stall below this on large objects
+GRIPPER_CLOSE_TARGET = 1000  # commanded close position; actual may stall below this on large objects
 GRIPPER_STALL_SLACK = 10    # if actual < target - this, assume stalled against object
-GRIPPER_RELAX_OFFSET = 5    # back off this many units from the stall point to release torque
+GRIPPER_RELAX_OFFSET = 200   # back off this many units from the stall point to release torque
 GRIPPER_RELEASE_DELTA = 40  # if current pos < hold_target - this, user opened the gripper
 
 # --- arm conventions (from main.execute_arm_action) ---
@@ -495,7 +495,7 @@ class BallFollowMode(Mode):
         # Open fully, close on the ball, detect stall + relax, then lift and
         # return home. Home pose deliberately excludes the gripper so the ball
         # isn't dropped.
-        arm.setPosition(SERVO_GRIPPER, 60, duration=500, wait=True)
+        arm.setPosition(SERVO_GRIPPER, 0, duration=500, wait=True)
         arm.setPosition(SERVO_GRIPPER, GRIPPER_CLOSE_TARGET, duration=700, wait=True)
 
         actual = arm.getPosition(SERVO_GRIPPER)
