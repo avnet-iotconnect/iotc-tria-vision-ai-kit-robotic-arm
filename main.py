@@ -715,10 +715,23 @@ def process_iotconnect_commands(arm):
                 # Updates camera_settings.json AND signals the live capture thread
                 # to re-apply on the fly — no mode restart needed.
                 name, value = _extract_pair(command_args)
-                if name not in cam_settings.SETTING_PROPS:
+                # A single word that names a preset (`camera_setting vivid`)
+                # is treated as camera_preset, so preset buttons wired to this
+                # command still work.
+                preset = None
+                if name is None or value is None:
+                    cand = _extract_arg(command_args, 'name', 'preset', 'value')
+                    if cand in cam_settings.preset_names():
+                        preset = cand
+                if preset is not None:
+                    settings = cam_settings.apply_preset(preset)
+                    cam_settings.mark_dirty()
+                    ack_message = f"camera_preset '{preset}' applied: {json.dumps(settings)}"
+                elif name not in cam_settings.SETTING_PROPS:
                     ack_status = C2dAck.CMD_FAILED
                     ack_message = (f"camera_setting: unknown name '{name}'. "
-                                   f"Valid: {cam_settings.known_setting_names()}")
+                                   f"Valid: {cam_settings.known_setting_names()} "
+                                   f"or a preset: {cam_settings.preset_names()}")
                 else:
                     try:
                         casted = cam_settings.SETTING_PROPS[name][1](value)
