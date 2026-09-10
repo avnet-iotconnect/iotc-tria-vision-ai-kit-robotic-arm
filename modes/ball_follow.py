@@ -80,6 +80,10 @@ TELEMETRY_INTERVAL_S = 5.0       # how often we publish ball telemetry to /IOTCO
 GRIPPER_CLOSE_TARGET = 1000  # commanded close position; actual may stall below this on large objects
 GRIPPER_STALL_SLACK = 10    # if actual < target - this, assume stalled against object
 GRIPPER_RELEASE_DELTA = 40  # if current pos < hold_target - this, user opened the gripper
+GRIPPER_CLOSE_MS = 700          # commanded close time; under load the servo lags this
+GRIPPER_SETTLE_TIMEOUT_S = 1.5  # max extra time to wait for the jaws to stop moving
+GRIPPER_SETTLE_DELTA = 3        # consecutive reads this close together = jaws stopped
+GRIPPER_SETTLE_DWELL_S = 0.3    # let the servo build full torque on the ball before lifting
 
 # --- arm conventions (from main.execute_arm_action) ---
 SERVO_GRIPPER = 1
@@ -495,9 +499,12 @@ class BallFollowMode(Mode):
         # return home. Home pose deliberately excludes the gripper so the ball
         # isn't dropped.
         arm.setPosition(SERVO_GRIPPER, 0, duration=500, wait=True)
-        arm.setPosition(SERVO_GRIPPER, GRIPPER_CLOSE_TARGET, duration=700, wait=True)
+        arm.setPosition(SERVO_GRIPPER, GRIPPER_CLOSE_TARGET, duration=GRIPPER_CLOSE_MS, wait=True)
 
-        actual = arm.getPosition(SERVO_GRIPPER)
+        # wait=True only sleeps for the commanded duration; closing on the
+        # ball the servo runs slower than that, so poll until the jaws have
+        # actually stopped before deciding where they stalled and lifting.
+        actual = self._wait_gripper_settled(arm)
         if actual < GRIPPER_CLOSE_TARGET - GRIPPER_STALL_SLACK:
             # Stalled on the ball. Leave the servo commanded at full close so
             # it keeps pushing at maximum torque for the whole carry. Sending
@@ -515,6 +522,30 @@ class BallFollowMode(Mode):
             [SERVO_ELBOW_FLEX, 350],
         ], duration=1500, wait=True)
         arm.setPosition(HOME_POSE_KEEP_GRIP, duration=1800, wait=True)
+
+    def _wait_gripper_settled(self, arm):
+        """Poll the gripper until two consecutive reads agree (jaws stopped —
+        stalled on the ball or fully closed), then dwell so the servo is at
+        full torque. Returns the final position. A read failure ends the
+        wait early with the last value we got."""
+        last = int(arm.getPosition(SERVO_GRIPPER))
+        deadline = time.time() + GRIPPER_SETTLE_TIMEOUT_S
+        stable = 0
+        while time.time() < deadline:
+            time.sleep(0.1)
+            try:
+                cur = int(arm.getPosition(SERVO_GRIPPER))
+            except Exception as e:
+                print(f"[ball] gripper read failed while settling: {e}")
+                break
+            stable = stable + 1 if abs(cur - last) <= GRIPPER_SETTLE_DELTA else 0
+            last = cur
+            if stable >= 2:
+                break
+        else:
+            print(f"[ball] gripper still moving after {GRIPPER_SETTLE_TIMEOUT_S}s (at {last})")
+        time.sleep(GRIPPER_SETTLE_DWELL_S)
+        return last
 
     def _maybe_predict(self):
         """Return a (bx, by, br) tuple extrapolated from recent motion, or None.
