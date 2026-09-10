@@ -81,11 +81,11 @@ GRIPPER_CLOSE_TARGET = 1000  # commanded close position; actual may stall below 
 GRIPPER_STALL_SLACK = 10    # if actual < target - this, assume stalled against object
 GRIPPER_RELEASE_DELTA = 40  # if current pos < hold_target - this, user opened the gripper
 GRIPPER_CLOSE_MS = 250          # close ramp; short so the servo is already at full torque when it meets the ball
-GRIPPER_SETTLE_TIMEOUT_S = 1.5  # max extra time to wait for the jaws to stop moving
+GRIPPER_SETTLE_TIMEOUT_S = 3.0  # max extra time to wait for the jaws to stop moving (they creep for ~2 s on the ball)
 GRIPPER_SETTLE_DELTA = 3        # consecutive reads this close together = jaws stopped
 GRIPPER_SETTLE_READS = 3        # how many agreeing reads (100 ms apart) before we call the jaws stopped
 GRIPPER_SETTLE_DWELL_S = 0.5    # let the servo build full torque on the ball before lifting
-GRIPPER_SLIP_DELTA = 60         # jaws closed this much further after the lift = ball slipped out
+GRIPPER_EMPTY_POS = 900         # jaws at/after this after the lift = nothing in them (a ball holds them well below)
 GRIPPER_TRACK_POS = 250         # jaw opening while tracking (matches the scan poses)
 
 # --- arm conventions (from main.execute_arm_action) ---
@@ -502,7 +502,7 @@ class BallFollowMode(Mode):
         isn't dropped.
 
         Returns True if we are holding the ball after the lift. If the jaws
-        closed on nothing, or closed further during the lift (ball slipped
+        closed on nothing, or are (nearly) shut after the lift (ball slipped
         out), the gripper is re-opened, hold_target stays None and False is
         returned so the caller goes back to tracking instead of carrying an
         empty gripper to the box.
@@ -533,14 +533,17 @@ class BallFollowMode(Mode):
             [SERVO_ELBOW_FLEX, 350],
         ], duration=1500, wait=True)
 
-        # If the ball squirted out on the way up the jaws will have closed
-        # further. Catch that here rather than transporting an empty gripper.
+        # If the ball squirted out on the way up the jaws will have snapped
+        # (nearly) shut. Catch that here rather than transporting an empty
+        # gripper. The threshold is absolute: the jaws keep creeping closed
+        # on a held ball for a couple of seconds, so "closed further than the
+        # stall" is normal and does NOT mean the ball is gone.
         try:
             after = int(arm.getPosition(SERVO_GRIPPER))
         except Exception as e:
             print(f"[ball] gripper read after lift failed: {e}")
             after = actual
-        if after > actual + GRIPPER_SLIP_DELTA:
+        if after >= GRIPPER_EMPTY_POS:
             print(f"[ball] ball slipped during lift: gripper {actual} -> {after}; back to tracking")
             self.hold_target = None
             arm.setPosition(SERVO_GRIPPER, GRIPPER_TRACK_POS, duration=300, wait=True)
