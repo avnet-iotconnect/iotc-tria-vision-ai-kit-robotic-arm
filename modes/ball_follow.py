@@ -79,7 +79,6 @@ MAX_PREDICT_FRAMES = 15          # cap predictions so the arm doesn't run away o
 TELEMETRY_INTERVAL_S = 5.0       # how often we publish ball telemetry to /IOTCONNECT — matches device template dataFrequency
 GRIPPER_CLOSE_TARGET = 1000  # commanded close position; actual may stall below this on large objects
 GRIPPER_STALL_SLACK = 10    # if actual < target - this, assume stalled against object
-GRIPPER_RELAX_OFFSET = 200   # back off this many units from the stall point to release torque
 GRIPPER_RELEASE_DELTA = 40  # if current pos < hold_target - this, user opened the gripper
 
 # --- arm conventions (from main.execute_arm_action) ---
@@ -492,7 +491,7 @@ class BallFollowMode(Mode):
         return best
 
     def _do_grab(self, arm):
-        # Open fully, close on the ball, detect stall + relax, then lift and
+        # Open fully, close on the ball, detect the stall, then lift and
         # return home. Home pose deliberately excludes the gripper so the ball
         # isn't dropped.
         arm.setPosition(SERVO_GRIPPER, 0, duration=500, wait=True)
@@ -500,10 +499,14 @@ class BallFollowMode(Mode):
 
         actual = arm.getPosition(SERVO_GRIPPER)
         if actual < GRIPPER_CLOSE_TARGET - GRIPPER_STALL_SLACK:
-            relaxed = actual + GRIPPER_RELAX_OFFSET
-            print(f"[ball] gripper stalled at {actual} (target {GRIPPER_CLOSE_TARGET}); relaxing to {relaxed}")
-            arm.setPosition(SERVO_GRIPPER, relaxed, duration=200, wait=True)
-            self.hold_target = relaxed
+            # Stalled on the ball. Leave the servo commanded at full close so
+            # it keeps pushing at maximum torque for the whole carry. Sending
+            # a new "relaxed" target here makes the servo re-interpolate from
+            # where it currently sits, which momentarily unloads the jaws and
+            # lets the ball shift. hold_target is where the jaws actually
+            # stopped — the release check compares the live position to it.
+            print(f"[ball] gripper stalled at {actual} (target {GRIPPER_CLOSE_TARGET}); holding at full close")
+            self.hold_target = actual
         else:
             self.hold_target = GRIPPER_CLOSE_TARGET
 
