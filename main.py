@@ -358,6 +358,41 @@ def _extract_arg(command_args, *keys):
     return None
 
 
+def _extract_second_arg(command_args, first, *keys):
+    """Value that follows the target word in a two-word command, e.g.
+    `calibrate grab_depth 650` → "650". Positional: element [1]. Dict: the
+    first of `keys` present whose value isn't the target word itself (so
+    {"value": "grab_depth"} doesn't get read back as the value). None if absent."""
+    if isinstance(command_args, (list, tuple)):
+        if len(command_args) > 1 and command_args[1] is not None:
+            return str(command_args[1]).strip().lower()
+        return None
+    if isinstance(command_args, dict):
+        for k in keys:
+            v = command_args.get(k)
+            if v is not None and str(v).strip().lower() != first:
+                return str(v).strip().lower()
+    return None
+
+
+def _set_grab_depth_from_command(value):
+    """`calibrate grab_depth <D>` / `calibrate_grab_depth <D>` with a value:
+    set the grab-gate depth floor D directly (live + persisted through
+    grab_threshold_store), `show` reports it. Lets a template that only has
+    the calibrate buttons change D without a set_grab_threshold command.
+    Returns (ack_status, ack_message)."""
+    if value == 'show':
+        return C2dAck.CMD_SUCCESS_WITH_ACK, f"grab gate: {grab_threshold_store.describe()}"
+    try:
+        v = grab_threshold_store.set_value(value)
+    except (TypeError, ValueError) as e:
+        return C2dAck.CMD_FAILED, (f"grab_depth: invalid value '{value}': {e}. "
+                                   "Send a number to set D, 'show' to read it, "
+                                   "or no value to open the teach UI.")
+    return C2dAck.CMD_SUCCESS_WITH_ACK, (f"grab gate now D >= {v:g} (applied live, persisted) "
+                                         f"— {grab_threshold_store.describe()}")
+
+
 def iotc_on_command(msg):
     print(f"Received IoTConnect command: {msg.command_name} args={msg.command_args} ack_id={msg.ack_id}")
     with command_queue_lock:
@@ -586,10 +621,16 @@ def process_iotconnect_commands(arm):
                                    f"Valid: {sorted(VISION_MODE_NAMES)} or 'idle'")
             elif command_name == 'calibrate':
                 target = _extract_arg(command_args, 'target', 'mode', 'value', 'name')
+                # `calibrate grab_depth 650` sets D directly instead of
+                # launching the teach UI (see _set_grab_depth_from_command).
+                depth_value = (_extract_second_arg(command_args, target, 'd', 'threshold', 'value')
+                               if target == 'grab_depth' else None)
                 if target is None:
                     ack_status = C2dAck.CMD_FAILED
                     ack_message = (f"calibrate: missing 'target' argument. "
                                    f"Valid: {sorted(CALIBRATION_TARGETS)}")
+                elif depth_value is not None:
+                    ack_status, ack_message = _set_grab_depth_from_command(depth_value)
                 elif target in CALIBRATION_TARGETS:
                     argv = _build_calibrator_argv(f'calibrate_{target}', _runtime_camera_index)
                     set_pending_action(('run_subprocess', argv, f'calibrate_{target}'))
@@ -606,8 +647,13 @@ def process_iotconnect_commands(arm):
                 set_pending_action(('switch_mode', new_mode))
                 ack_message = f"Will switch to mode: {new_mode}"
             elif command_name in CALIBRATOR_COMMAND_NAMES:
+                # `calibrate_grab_depth 650` — same D shortcut as `calibrate grab_depth 650`.
+                depth_value = (_extract_arg(command_args, 'd', 'threshold', 'value')
+                               if command_name == 'calibrate_grab_depth' else None)
                 argv = _build_calibrator_argv(command_name, _runtime_camera_index)
-                if argv is None:
+                if depth_value is not None:
+                    ack_status, ack_message = _set_grab_depth_from_command(depth_value)
+                elif argv is None:
                     ack_status = C2dAck.CMD_FAILED
                     ack_message = f"Unknown calibrator: {command_name}"
                 else:
