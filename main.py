@@ -776,6 +776,31 @@ def process_iotconnect_commands(arm):
                 ack_message = ("camera_settings reset to empty — camera will use V4L2 defaults "
                                "on next mode/calibrator start (live capture stays at last applied "
                                "values until reopened)")
+            elif command_name == 'camera_preset':
+                # `camera_preset NAME` (positional) or {"name": NAME}. Replaces
+                # camera_settings.json with the whole preset and re-applies live.
+                name = _extract_arg(command_args, 'name', 'preset', 'value')
+                settings = cam_settings.apply_preset(name)
+                if settings is None:
+                    ack_status = C2dAck.CMD_FAILED
+                    ack_message = (f"camera_preset: unknown preset '{name}'. "
+                                   f"Valid: {cam_settings.preset_names()}")
+                else:
+                    cam_settings.mark_dirty()  # capture thread re-applies on next iteration
+                    ack_message = f"camera_preset '{name}' applied: {json.dumps(settings)}"
+            elif command_name == 'camera_preset_save':
+                # `camera_preset_save NAME` — snapshot the current settings into
+                # camera_presets.json so a tuned picture becomes a one-press button.
+                name = _extract_arg(command_args, 'name', 'preset', 'value')
+                settings = cam_settings.save_preset(name)
+                if settings is None:
+                    ack_status = C2dAck.CMD_FAILED
+                    ack_message = (f"camera_preset_save: nothing saved for '{name}' — name must be "
+                                   "letters/digits/_/- and camera_settings.json must not be empty")
+                else:
+                    ack_message = f"camera_preset '{name}' saved: {json.dumps(settings)}"
+            elif command_name == 'camera_presets_show':
+                ack_message = f"camera_presets: {json.dumps(cam_settings.load_presets())}"
             else:
                 action_name = IOTC_COMMAND_TO_ACTION.get(command_name)
                 if action_name is None:
@@ -1410,7 +1435,8 @@ def parse_args():
                              "JSON object mapping setting name → value. "
                              f"Valid names: {cam_settings.known_setting_names()}. "
                              "Cloud commands camera_setting/camera_settings_show/camera_settings_reset "
-                             "edit this file at runtime.")
+                             "edit this file at runtime; camera_preset NAME replaces it with a preset "
+                             f"({cam_settings.preset_names()}).")
     parser.add_argument('--webrtc', action='store_true',
                         help="Enable KVS WebRTC video streaming (requires robarmwebrtc device template)")
     return parser.parse_args()

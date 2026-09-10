@@ -731,6 +731,10 @@ These commands work via /IOTCONNECT regardless of which demo is running:
 | `hold_pose` | Re-engage torque at the current pose |
 | `teach_scan_pose name=<n>` | Snapshot current arm pose into a named scan slot |
 | `camera_setting <name> <value>` | Update a camera setting live (exposure, saturation, etc.) |
+| `camera_settings_show` / `camera_settings_reset` | Show the current camera settings / wipe them back to camera defaults |
+| `camera_preset <name>` | Apply a whole camera preset live: `normal`, `bright`, `dim`, `vivid`, `warm`, `cool`, `auto` (or one you saved) |
+| `camera_preset_save <name>` | Save the current camera settings as a named preset (tune with `camera_setting`, then keep it as a button) |
+| `camera_presets_show` | List all presets and their values |
 
 ---
 
